@@ -1,0 +1,22 @@
+# IDE配置文件
+.idea/
+
+# 配置文件
+config.json
+
+# Go项目临时文件和编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# 临时文件
+*.log
+tmp/
+temp/
+
+# Go工作区文件
+go.work
