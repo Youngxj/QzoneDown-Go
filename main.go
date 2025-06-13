@@ -1,769 +1,378 @@
 package main
 
 import (
+	"DzoneDown-Go/enum"
+	"DzoneDown-Go/utils"
+	"DzoneDown-Go/utils/progress"
+	"DzoneDown-Go/utils/table_format"
 	"bufio"
-	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/cheggaaa/pb/v3"
+	"github.com/jedib0t/go-pretty/v6/table"
+	"io"
 	"math"
-	"net/url"
+	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	// 修改为相对导入路径
-	"qzone-down/utils"
-
-	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gctx"
 )
 
-// QzoneImgDown 结构体
-type QzoneImgDown struct {
-	gTk     string
-	resUin  string
-	cookie  string
-	listApi string
-	imgApi  string
-	threads int // 线程数字段
+// 定义一个结构体来匹配 JSON 数据结构
+type photoListResponseStruct struct {
+	Code    int    `json:"code"`
+	Subcode int    `json:"subcode"`
+	Message string `json:"message"`
+	Data    struct {
+		VFeeds []struct {
+			Pic photoListPicStruct `json:"pic"`
+		} `json:"vFeeds"`
+		HasMore     int `json:"has_more"`
+		RemainCount int `json:"remain_count"` // 剩余数量
+	} `json:"data"`
 }
 
-// NewQzoneImgDown 构造函数
-func NewQzoneImgDown(gTk, resUin, cookie string, threads int) *QzoneImgDown {
-	listApi := fmt.Sprintf("https://mobile.qzone.qq.com/list?g_tk=%s&format=json&list_type=album&action=0&res_uin=%s&count=99", gTk, resUin)
-	imgApi := fmt.Sprintf("https://h5.qzone.qq.com/webapp/json/mqzone_photo/getPhotoList2?g_tk=%s&uin=%s&albumid=xxxxxxxxxxxxx&ps=0&pn=999&password=&password_cleartext=0&swidth=1080&sheight=1920", gTk, resUin)
-	return &QzoneImgDown{
-		gTk:     gTk,
-		resUin:  resUin,
-		cookie:  cookie,
-		listApi: listApi,
-		imgApi:  imgApi,
-		threads: threads,
-	}
+// 相册图片列表Struct
+type photoImgListResponseStruct struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    struct {
+		Album struct {
+			Name           string `json:"name"`           // 相册名称
+			Desc           string `json:"desc"`           // 相册描述
+			Createtime     int    `json:"createtime"`     // 相册创建时间
+			Moditytime     int    `json:"moditytime"`     // 相册修改时间
+			Lastuploadtime int    `json:"lastuploadtime"` // 相册最后上传时间
+		} `json:"album"` // 相册详情
+		TotalCount int         `json:"total_count"` // 相册图片总数
+		ListCount  int         `json:"list_count"`  // 相册图片列表数量
+		Photos     interface{} `json:"photos"`      // 相册图片列表
+	} `json:"data"`
 }
 
-// getResponse 发送 HTTP 请求并获取响应数据
-func (q *QzoneImgDown) getResponse(ctx context.Context, url string) (string, error) {
-	c := g.Client()
-	c.SetHeader("Content-Type", "application/x-www-form-urlencoded")
-	c.SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:43.0) Gecko/20100101 Firefox/43.0")
-	c.SetHeader("Accept", "*/*")
-	c.SetHeader("Connection", "keep-alive")
-	c.SetHeader("Cookie", q.cookie)
-	if debugMode {
-		fmt.Println("url", url)
-	}
-	r, e := c.Get(gctx.New(), url)
-	if e != nil {
-		panic(e)
-	}
-	body := r.ReadAllString()
-	return body, e
+// PhotoInfo 定义图片信息的结构
+type PhotoInfo struct {
+	URL         string `json:"url"`
+	Width       int    `json:"width"`
+	Height      int    `json:"height"`
+	FocusX      int    `json:"focus_x"`
+	FocusY      int    `json:"focus_y"`
+	EnlargeRate int    `json:"enlarge_rate"`
 }
 
-// getImg 获取图片列表
-func (q *QzoneImgDown) getImg(ctx context.Context, url string) error {
-	body, err := q.getResponse(ctx, url)
-	if err != nil {
-		return fmt.Errorf("请求出错: %w", err)
-	}
-
-	data, err := utils.ParseJSON(body)
-	if err != nil {
-		return fmt.Errorf("解析 JSON 出错: %w", err)
-	}
-
-	if data["data"] != nil {
-		dataMap, ok := data["data"].(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("数据格式错误: data 不是 map")
-		}
-		if dataMap["album"] != nil {
-			albumMap, ok := dataMap["album"].(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("数据格式错误: album 不是 map")
-			}
-			fileName, ok := albumMap["name"].(string)
-			if !ok {
-				return fmt.Errorf("数据格式错误: album.name 不是字符串")
-			}
-
-			// 检查并创建 download_links 目录
-			if err := utils.EnsureDir(utils.DownloadLinksDir); err != nil {
-				return err
-			}
-
-			txtPath := filepath.Join(utils.DownloadLinksDir, fileName+".txt")
-			// 第一次清空文件
-			file, err := os.OpenFile(txtPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-			if err != nil {
-				return fmt.Errorf("文件写入失败，请检查目录读写权限是否正常: %w", err)
-			}
-			file.Close()
-
-			// 后续采用追加模式写入
-			file, err = os.OpenFile(txtPath, os.O_APPEND|os.O_WRONLY, 0644)
-			if err != nil {
-				return fmt.Errorf("文件写入失败，请检查目录读写权限是否正常: %w", err)
-			}
-			defer file.Close()
-
-			if dataMap["photos"] != nil {
-				photos, ok := dataMap["photos"].(map[string]interface{})
-				if !ok {
-					return fmt.Errorf("数据格式错误: photos 不是切片")
-				}
-				var imgUrls []string
-				for _, photo := range photos {
-					photoMap, ok := photo.([]interface{})
-					if !ok {
-						return fmt.Errorf("数据格式错误: photo 不是 map")
-					}
-					for _, subPhoto := range photoMap {
-						subPhotoMap, ok := subPhoto.(map[string]interface{})
-						if !ok {
-							return fmt.Errorf("数据格式错误: subPhoto 不是 map")
-						}
-						if imgInfo, ok := subPhotoMap["1"].(map[string]interface{}); ok {
-							if imgUrl, ok := imgInfo["url"].(string); ok {
-								if debugMode {
-									fmt.Println(imgUrl)
-								}
-								imgUrls = append(imgUrls, imgUrl)
-							}
-						}
-					}
-				}
-				for _, url1 := range imgUrls {
-					_, err := file.WriteString(url1 + "\n")
-					if err != nil {
-						return fmt.Errorf("写入文件出错: %w", err)
-					}
-				}
-
-				// 设置最大并发数
-				maxConcurrentDownloads := q.threads // 使用结构体中的线程数
-
-				// 读取txt文件中的链接
-				links, err := utils.ReadLinksFromFile(txtPath)
-				if err != nil {
-					return fmt.Errorf("读取链接文件出错: %w", err)
-				}
-
-				totalLinks := len(links)
-				if totalLinks == 0 {
-					fmt.Println("没有可下载的图片。")
-					return nil
-				}
-
-				// 只有有图片时才启动进度显示和下载协程
-				var wg sync.WaitGroup
-				semaphore := make(chan struct{}, maxConcurrentDownloads)
-				var progressMutex sync.Mutex
-				progress := 0
-				done := make(chan struct{})
-
-				// 启动进度显示协程
-				startTime := time.Now() // 记录开始时间
-				go func(albumName string) {
-					for {
-						progressMutex.Lock()
-						cur := progress
-						progressMutex.Unlock()
-						fmt.Printf("\r正在下载相册 '%s': %d/%d ...", albumName, cur, totalLinks)
-						if cur >= totalLinks {
-							break
-						}
-						time.Sleep(200 * time.Millisecond)
-					}
-					elapsedTime := time.Since(startTime) // 计算耗时
-					fmt.Printf("\r相册 '%s' 下载完成: %d/%d, 耗时: %s\n", albumName, totalLinks, totalLinks, elapsedTime)
-					close(done)
-				}(fileName)
-
-				for idx := range links {
-					wg.Add(1)
-					semaphore <- struct{}{}
-					go func(idx int, albumName string) {
-						defer func() {
-							if r := recover(); r != nil {
-								fmt.Printf("下载协程异常: %v\n", r)
-							}
-							wg.Done()
-							<-semaphore
-						}()
-						// 传递相册名
-						if err := utils.DownloadFileWithAlbum(links[idx], albumName); err != nil {
-							fmt.Printf("\nFailed to download %s from album '%s': %v\n", links[idx], albumName, err)
-						}
-						progressMutex.Lock()
-						progress++
-						progressMutex.Unlock()
-					}(idx, fileName)
-				}
-				wg.Wait()
-				<-done
-			}
-		}
-	} else {
-		return fmt.Errorf("error: 响应数据中 data 字段为空")
-	}
-	return nil
+// 相册信息Struct
+type photoListPicStruct struct {
+	Albumid        string          `json:"albumid"`        //相册id
+	Desc           string          `json:"desc"`           //相册描述
+	Albumname      string          `json:"albumname"`      //相册名称
+	Albumnum       int             `json:"albumnum"`       //相册照片数量
+	Albumquestion  string          `json:"albumquestion"`  //相册问题
+	Albumrights    int             `json:"albumrights"`    //相册访问权限
+	Lastupdatetime int             `json:"lastupdatetime"` //相册最后更新时间
+	Anonymity      int             `json:"anonymity"`      //主题
+	Picdata        json.RawMessage `json:"picdata"`        //其他属性
+	Photos         [][]PhotoInfo
 }
 
-// ret 计算翻页
-func (q *QzoneImgDown) ret(ctx context.Context, url string) error {
-	body, err := q.getResponse(ctx, url)
-	if err != nil {
-		return fmt.Errorf("请求出错: %w", err)
-	}
+var cookie string = ""
 
-	data, err := utils.ParseJSON(body)
-	if err != nil {
-		return fmt.Errorf("解析 JSON 出错: %w", err)
-	}
+var gTk string = ""
 
-	if data["data"] != nil {
-		dataMap, ok := data["data"].(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("数据格式错误: data 不是 map")
-		}
-		if dataMap["album"] != nil {
-			totalCount, ok := dataMap["total_count"].(float64)
-			if !ok {
-				return fmt.Errorf("数据格式错误: total_count 不是浮点数")
-			}
-			pageSize := 999
-			pageCount := int(math.Ceil(totalCount/float64(pageSize))) - 1
+// var gTk string = fmt.Sprint(utils.GetGTK(utils.GetSkey(cookie)))// 自动计算的gtk在相册图片列表不适用（403异常）
+//var gTk string = fmt.Sprint(utils.GetGTK2(photoImgApi, utils.GetCookieKey(cookie, "skey"))) // 自动计算的gtk
 
-			// 先处理第一页（已拿到数据）
-			err := q.handleImgData(ctx, url, data)
-			if err != nil {
-				return err
-			}
-			// 处理后续页
-			for i := 1; i <= pageCount; i++ {
-				newUrl := q.urlSetValue(url, "ps", i*pageSize)
-				err := q.getImg(ctx, newUrl)
-				if err != nil {
-					return err
-				}
-			}
-			fmt.Println("All downloads completed.") // 只在所有分页完成后输出
-		} else {
-			return fmt.Errorf("error: 响应数据中 album 字段为空")
-		}
-	} else {
-		return fmt.Errorf("error: 响应数据中 data 字段为空")
-	}
-	return nil
-}
+var resUin string = utils.GetUin(cookie)
 
-// 专门处理图片数据（与 getImg 逻辑一致，但直接用已获取的数据）
-func (q *QzoneImgDown) handleImgData(ctx context.Context, url string, data map[string]interface{}) error {
-	dataMap, ok := data["data"].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("数据格式错误: data 不是 map")
-	}
-	if dataMap["album"] != nil {
-		albumMap, ok := dataMap["album"].(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("数据格式错误: album 不是 map")
-		}
-		fileName, ok := albumMap["name"].(string)
-		if !ok {
-			return fmt.Errorf("数据格式错误: album.name 不是字符串")
-		}
+var picArray []photoListPicStruct // 相册信息列表
+var currenPic photoListPicStruct  // 当前相册信息
+var photoPn int = 20              // 相册图片列表分页
+var picPn int = 40                // 相册列表分页最小10，最大40
 
-		// 检查并创建 download_links 目录
-		if err := utils.EnsureDir(utils.DownloadLinksDir); err != nil {
-			return err
-		}
+var bar progress.Bar              // 下载总数进度条初始化
+var photoCount int                // 相册图片数量
+var photoDownSuccessNum int32 = 0 // 相册图片下载成功数量
 
-		txtPath := filepath.Join(utils.DownloadLinksDir, fileName+".txt")
-		// 第一次清空文件
-		file, err := os.OpenFile(txtPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			return fmt.Errorf("文件写入失败，请检查目录读写权限是否正常: %w", err)
-		}
-		file.Close()
+// 相册列表接口
+var photoListApi string = fmt.Sprintf("https://mobile.qzone.qq.com/list?g_tk=%s&format=json&list_type=album&action=0&res_uin=%s&count=%d&res_attach=", gTk, resUin, picPn)
 
-		// 后续采用追加模式写入
-		file, err = os.OpenFile(txtPath, os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("文件写入失败，请检查目录读写权限是否正常: %w", err)
-		}
-		defer file.Close()
+// 相册图片列表接口
+var photoImgApi string = fmt.Sprintf("https://h5.qzone.qq.com/webapp/json/mqzone_photo/getPhotoList2?g_tk=%s&uin=%s&albumid=xxxxxxxxx&ps=0&pn=20&password=&password_cleartext=0&swidth=1080&sheight=1920", gTk, resUin)
 
-		if dataMap["photos"] != nil {
-			photos, ok := dataMap["photos"].(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("数据格式错误: photos 不是切片")
-			}
-			var imgUrls []string
-			for _, photo := range photos {
-				photoMap, ok := photo.([]interface{})
-				if !ok {
-					return fmt.Errorf("数据格式错误: photo 不是 map")
-				}
-				for _, subPhoto := range photoMap {
-					subPhotoMap, ok := subPhoto.(map[string]interface{})
-					if !ok {
-						return fmt.Errorf("数据格式错误: subPhoto 不是 map")
-					}
-					if imgInfo, ok := subPhotoMap["1"].(map[string]interface{}); ok {
-						if imgUrl, ok := imgInfo["url"].(string); ok {
-							if debugMode {
-								fmt.Println(imgUrl)
-							}
-							imgUrls = append(imgUrls, imgUrl)
-						}
-					}
-				}
-			}
-			for _, url1 := range imgUrls {
-				_, err := file.WriteString(url1 + "\n")
-				if err != nil {
-					return fmt.Errorf("写入文件出错: %w", err)
-				}
-			}
-
-			// 设置最大并发数
-			maxConcurrentDownloads := q.threads // 使用结构体中的线程数
-
-			// 读取txt文件中的链接
-			links, err := utils.ReadLinksFromFile(txtPath)
-			if err != nil {
-				return fmt.Errorf("读取链接文件出错: %w", err)
-			}
-
-			totalLinks := len(links)
-			if totalLinks == 0 {
-				fmt.Println("没有可下载的图片。")
-				return nil
-			}
-
-			// 只有有图片时才启动进度显示和下载协程
-			var wg sync.WaitGroup
-			semaphore := make(chan struct{}, maxConcurrentDownloads)
-			var progressMutex sync.Mutex
-			progress := 0
-			done := make(chan struct{})
-
-			// 启动进度显示协程
-			startTime := time.Now() // 记录开始时间
-			go func(albumName string) {
-				for {
-					progressMutex.Lock()
-					cur := progress
-					progressMutex.Unlock()
-					fmt.Printf("\r正在下载相册 '%s': %d/%d ...", albumName, cur, totalLinks)
-					if cur >= totalLinks {
-						break
-					}
-					time.Sleep(200 * time.Millisecond)
-				}
-				elapsedTime := time.Since(startTime) // 计算耗时
-				fmt.Printf("\r相册 '%s' 下载完成: %d/%d, 耗时: %s\n", albumName, totalLinks, totalLinks, elapsedTime)
-				close(done)
-			}(fileName)
-
-			for idx := range links {
-				wg.Add(1)
-				semaphore <- struct{}{}
-				go func(idx int, albumName string) {
-					defer func() {
-						if r := recover(); r != nil {
-							fmt.Printf("下载协程异常: %v\n", r)
-						}
-						wg.Done()
-						<-semaphore
-					}()
-					// 传递相册名
-					if err := utils.DownloadFileWithAlbum(links[idx], albumName); err != nil {
-						fmt.Printf("\nFailed to download %s from album '%s': %v\n", links[idx], albumName, err)
-					}
-					progressMutex.Lock()
-					progress++
-					progressMutex.Unlock()
-				}(idx, fileName)
-			}
-			wg.Wait()
-			<-done
-		}
-	}
-	return nil
-}
-
-type AlbumInfo struct {
-	Name       string
-	AlbumID    string
-	PhotoCount int
-}
-
-// getList 获取相册列表，只返回相册信息
-func (q *QzoneImgDown) getList(ctx context.Context) ([]AlbumInfo, error) {
-	body, err := q.getResponse(ctx, q.listApi)
-	if err != nil {
-		return nil, fmt.Errorf("请求出错: %w", err)
-	}
-
-	data, err := utils.ParseJSON(body)
-	if err != nil {
-		return nil, fmt.Errorf("解析 JSON 出错1: %w", err)
-	}
-
-	var albums []AlbumInfo
-
-	if data["data"] != nil {
-		dataMap, ok := data["data"].(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("数据格式错误: data 不是 map")
-		}
-		if dataMap["vFeeds"] != nil {
-			vFeeds, ok := dataMap["vFeeds"].([]interface{})
-			if !ok {
-				return nil, fmt.Errorf("数据格式错误: vFeeds 不是切片")
-			}
-			for _, feed := range vFeeds {
-				feedMap, ok := feed.(map[string]interface{})
-				if !ok {
-					return nil, fmt.Errorf("数据格式错误: feed 不是 map")
-				}
-				if feedMap["pic"] != nil {
-					picMap, ok := feedMap["pic"].(map[string]interface{})
-					if !ok {
-						return nil, fmt.Errorf("数据格式错误: pic 不是 map")
-					}
-					if debugMode {
-						fmt.Printf("DEBUG: 相册原始数据: %+v\n", picMap)
-					}
-					albumID, ok := picMap["albumid"].(string)
-					if !ok {
-						return nil, fmt.Errorf("数据格式错误: albumid 不是字符串")
-					}
-					albumName, _ := picMap["albumname"].(string)
-					photocnt := 0
-					if v, ok := picMap["albumnum"].(float64); ok {
-						photocnt = int(v)
-					}
-					albums = append(albums, AlbumInfo{
-						Name:       albumName,
-						AlbumID:    albumID,
-						PhotoCount: photocnt,
-					})
-				}
-			}
-		} else {
-			return nil, fmt.Errorf("error: 响应数据中 vFeeds 字段为空")
-		}
-	} else {
-		if data["message"] != nil {
-			message, _ := data["message"].(string)
-			return nil, fmt.Errorf("error: " + message)
-		}
-		return nil, fmt.Errorf("error: 响应数据中 data 字段为空")
-	}
-	return albums, nil
-}
-
-// urlSetValue 替换 URL 参数
-func (q *QzoneImgDown) urlSetValue(urlStr, key string, value interface{}) string {
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		fmt.Println("解析 URL 出错:", err)
-		return urlStr
-	}
-	query := u.Query()
-	query.Set(key, fmt.Sprintf("%v", value))
-	u.RawQuery = query.Encode()
-	return u.String()
-}
-
-var debugMode = false // 默认为非调试模式，如需调试可设为 true
-
-// main 函数
 func main() {
-	fmt.Println(`
-	
-   ____                       _____                      
-  / __ \                     |  __ \                     
- | |  | | _______  _ __   ___| |  | | _____      ___ __  
- | |  | ||_  / _ \| '_ \ / _ \ |  | |/ _ \ \ /\ / / '_ \ 
- | |__| | / / (_) | | | |  __/ |__| | (_) \ V  V /| | | |
-  \___\_\/___\___/|_| |_|\___|_____/ \___/ \_/\_/ |_| |_|
-                                                         
-	`)
-	fmt.Println("\n" +
-		"\033[36mName\033[0m：\033[32mQQ空间相册下载器(Golang)\033[0m\n" +
-		"\033[36mVersion\033[0m：\033[32m1.0.0\033[0m\n" +
-		"\033[36mDescription\033[0m：\n" +
-		"	本程序用于下载QQ空间相册中的图片。\n" +
-		"	\033[33m使用方法\033[0m：\n" +
-		"		\033[34m1. 登录\033[4mhttps://qzone.qq.com\033[0m\033[34m并获取你的cookie以及g_tk和uin\n" +
-		"		2. 运行程序并输入你的cookie以及g_tk和uin\n" +
-		"		3. 程序会自动下载相册中的图片\033[0m\n" +
-		"\033[31mWarning\033[0m：本程序仅用于学习和研究，不得用于商业用途。\n")
-	var gTk, resUin, cookie string
-	// 加载配置
-	config, _ := utils.LoadConfig()
-	if config.GTk != "" && config.ResUin != "" && config.Cookie != "" {
-		fmt.Println("\n检测到已保存的配置：")
-		fmt.Printf("GTk: %s\nQQ号: %s\n", config.GTk, config.ResUin)
-		fmt.Print("是否使用已保存的配置？(y/n): ")
-		var useConfig string
-		fmt.Scanln(&useConfig)
-		if useConfig == "y" || useConfig == "Y" {
-			gTk = config.GTk
-			resUin = config.ResUin
-			cookie = config.Cookie
-		}
+	picList, err := getPicList()
+	picArray = picList
+	if err != nil {
+		fmt.Println("获取相册列表失败:", err)
+		return
+	} else if len(picArray) <= 0 {
+		fmt.Println("相册列表为空")
+		return
 	}
-
-	if gTk == "" {
-		fmt.Print("请输入g_tk值: ")
-		fmt.Scanln(&gTk)
-	}
-
-	if resUin == "" {
-		fmt.Print("请输入QQ号(uin): ")
-		fmt.Scanln(&resUin)
-	}
-
-	if cookie == "" {
-		fmt.Println("请输入cookie值(完整cookie字符串): ")
-		scanner := bufio.NewScanner(os.Stdin)
+	picFormat() // 打印输出格式化表格
+	// 创建一个 Scanner 对象，用于读取标准输入
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("请输入编号继续操作，全部下载输入0，其他任意字符退出：")
+	for {
+		// 提示用户输入
+		fmt.Print(">>> ")
+		// 读取一行输入
 		if scanner.Scan() {
-			cookie = scanner.Text()
+			picScanln := scanner.Text() // 获取输入的文本
+			// 输入编号执行任务
+			picId, err := strconv.Atoi(picScanln)
+			if err != nil { // 非数字都退出
+				fmt.Println("程序即将退出……👋")
+				return
+			}
+			currenPicName := ""
+			if picId > 0 {
+				err = getPhotoImages(picId)
+				if err != nil {
+					fmt.Println(err)
+				}
+				currenPicName = currenPic.Albumname
+			} else if picId == 0 {
+				// 全部下载
+				for i := range picArray {
+					err = getPhotoImages(i + 1)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}
+				currenPicName = "全部相册"
+			} else {
+				fmt.Println("输入有误，请重新输入")
+				continue
+			}
+			picFormat() // 打印输出格式化表格
+			fmt.Printf("<%s> 下载完成👌，请输入编号继续操作，全部下载输入0，其他任意字符退出：\n", currenPicName)
+		} else {
+			// 如果读取失败，打印错误信息
+			fmt.Println("程序即将退出……👋")
+			break
 		}
 	}
+}
 
-	if gTk == "" || resUin == "" || cookie == "" {
-		fmt.Println("错误：g_tk、QQ号和cookie都不能为空")
+// 获取指定相册图片列表
+//
+//	@param picId	相册ID（序号）
+func getPhotoImages(picId int) (errs error) {
+	picInfo := picArray[picId-1]
+	currenPic = picInfo
+	albumid := picInfo.Albumid
+	fmt.Printf("开始下载 相册名称：%s 照片数量：%d albumid：%s \n", picInfo.Albumname, picInfo.Albumnum, albumid)
+
+	bar = progress.Bar{} // 在这里重新初始化bar，否则会出现进度条叠加的情况
+	bar.NewOptionWithGraph(0, int64(picInfo.Albumnum), "✨")
+	photoDownSuccessNum = 0 // 重置下载成功数量
+
+	// 计算分页
+	pageCount := int(math.Ceil(float64(picInfo.Albumnum) / float64(photoPn)))
+	for i := 0; i < pageCount; i++ {
+		urls, err := getPhotoImageUrls(albumid, i)
+		if err != nil {
+			errs = fmt.Errorf("获取相册图片列表失败:%s", err)
+			return
+		}
+		picInfo.Photos = append(picInfo.Photos, urls)
+	}
+	bar.Finish()
+	return errs
+}
+
+// 文件下载
+//
+//	@param url	下载链接
+//	@param savePath	保存路径
+//	@param fileName 文件名
+//	@return errs
+func download(url string, savePath string, fileName string) (written int64, errs error) {
+	res, err := http.Get(url)
+	if err != nil {
+		errs = fmt.Errorf("请求图片下载失败：%s", url)
+	}
+	utils.ExistDir(savePath) // 检查目录是否存在
+	defer res.Body.Close()
+
+	size := res.ContentLength
+	// 创建文件下载进度条
+	downBar := pb.Full.Start64(size)
+	defer downBar.Finish()
+
+	file, err := os.Create(savePath + fileName + ".jpg")
+	if err != nil {
+		errs = fmt.Errorf("创建文件失败：%s", savePath+fileName)
+	}
+	//获得文件的writer对象
+	writer := downBar.NewProxyWriter(file)
+	written, err = io.Copy(writer, res.Body)
+	if err != nil {
+		errs = fmt.Errorf("文件写入失败：%s", err)
+	}
+
+	file.Close() //解锁文件
+	return written, errs
+}
+
+// 获取相册Url链接
+//
+//	@param albumid	相册ID（内部唯一ID）
+//	@param page 页码
+func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs error) {
+	photoUrl := utils.UrlSetValue(photoImgApi, "albumid", albumid)
+	photoUrl = utils.UrlSetValue(photoUrl, "ps", strconv.Itoa(page*photoPn))
+	//fmt.Println("photoUrl", photoUrl)
+	//return
+	body := request(photoUrl)
+	var photoImgListResponse photoImgListResponseStruct
+	err := json.Unmarshal(body, &photoImgListResponse)
+	if err != nil {
+		errs = fmt.Errorf("解析 JSON 数据失败.getPhotoImages：%s", err)
+		return
+	}
+	if photoImgListResponse.Code != 0 {
+		errs = fmt.Errorf("接口返回错误.photoImgList：%s", photoImgListResponse.Message)
 		return
 	}
 
-	var threads int
-	if config.Threads > 0 {
-		threads = config.Threads
-	} else {
-		threads = 5 // 默认线程数
+	photosData := photoImgListResponse.Data.Photos.(map[string]interface{})
+	var wg sync.WaitGroup // 用于等待所有 goroutine 完成
+	for _, photo := range photosData {
+		for _, info := range photo.([]interface{}) {
+			_info := info.(map[string]interface{})
+			// 检查 _info["1"] 是否存在
+			if data, ok := _info["1"]; ok {
+				// 将 data 序列化为 JSON 字节切片
+				jsonData, err := json.Marshal(data)
+				if err != nil {
+					err = fmt.Errorf("序列化数据失败:%s", err)
+					continue
+				}
+				var pInfo PhotoInfo
+				// 将 JSON 字节切片反序列化为 PhotoInfo 结构体
+				err = json.Unmarshal(jsonData, &pInfo)
+				if err != nil {
+					errs = fmt.Errorf("反序列化数据失败:%s", err)
+					continue
+				}
+				photoImgList = append(photoImgList, pInfo)
+
+				photoUrl := pInfo.URL
+				wg.Add(1) // 增加等待组计数
+				go func(url string) {
+					defer wg.Done() // 标记 goroutine 完成
+					_, err = download(url, "images/"+currenPic.Albumname+"/", utils.MD5(url))
+					if err != nil {
+						errs = fmt.Errorf("%s", err)
+					}
+					// 使用原子操作安全地增加计数器
+					atomic.AddInt32(&photoDownSuccessNum, 1)
+					bar.Play(int64(photoDownSuccessNum))
+				}(photoUrl)
+			}
+		}
 	}
+	wg.Wait() // 等待所有 goroutine 完成
+	return photoImgList, errs
+}
 
-	fmt.Printf("当前线程数为: %d\n", threads)
-	fmt.Print("请输入下载线程数 (1-20): ")
-	_, err := fmt.Scanln(&threads)
-	if err != nil || threads < 1 || threads > 20 {
-		fmt.Println("输入无效，使用默认线程数 5。")
-		threads = 5
-	}
+// 获取相册列表
+//
+//	@return picArrayData
+//	@return err
+func getPicList() (picArrayData []photoListPicStruct, err error) {
+	// 初始化一个变量用于存储所有分页的相册数据
+	var allPicArrayData []photoListPicStruct
 
-	// 保存配置
-	utils.SaveConfig(&utils.Config{
-		GTk:     gTk,
-		ResUin:  resUin,
-		Cookie:  cookie,
-		Threads: threads,
-	})
-
-	qzone := NewQzoneImgDown(gTk, resUin, cookie, threads) // 传入线程数
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+	// 定义当前页码
+	currentPage := 1
 	for {
-		albums, err := qzone.getList(ctx)
+		// 构建当前页码的请求 URL
+		resAttach := fmt.Sprintf("att=start_count=%d", (currentPage-1)*picPn)
+		currentPhotoListApi := utils.UrlSetValue(photoListApi, "res_attach", resAttach)
+
+		// 发起请求
+		body := request(currentPhotoListApi)
+		var photoList photoListResponseStruct
+		err = json.Unmarshal(body, &photoList)
 		if err != nil {
-			fmt.Println(err)
+			err = fmt.Errorf("解析 JSON 数据失败.getPicList：%s", err)
+			return
+		}
+		if photoList.Code != 0 {
+			err = fmt.Errorf("接口返回错误：%s", photoList.Message)
 			return
 		}
 
-		fmt.Println("所有相册列表：")
-		fmt.Println("0. 全部下载")
-
-		// 计算相册名称最大宽度
-		maxNameLen := 0
-		for _, album := range albums {
-			if l := len([]rune(album.Name)); l > maxNameLen {
-				maxNameLen = l
+		// 提取当前页的相册数据
+		var currentPageData []photoListPicStruct
+		for _, VFeeds := range photoList.Data.VFeeds {
+			// 创建一个映射来存储当前的值
+			item := photoListPicStruct{
+				Albumname:      VFeeds.Pic.Albumname,
+				Albumid:        VFeeds.Pic.Albumid,
+				Albumnum:       VFeeds.Pic.Albumnum,
+				Desc:           VFeeds.Pic.Desc,
+				Lastupdatetime: VFeeds.Pic.Lastupdatetime,
+				Albumrights:    VFeeds.Pic.Albumrights,
+				Anonymity:      VFeeds.Pic.Anonymity,
 			}
-		}
-		// 每行显示的相册数
-		const albumsPerRow = 3
-		// 计算每列的宽度，确保序号对齐
-		colWidth := maxNameLen + 20 // 为序号、括号和总数预留足够空间
-
-		for i, album := range albums {
-			// 序号固定宽度，名称和总数之间没有空格
-			fmt.Printf("%2d. %s(总数:%d)", i+1, album.Name, album.PhotoCount)
-
-			// 如果不是行尾，添加适当的空格使下一列的序号对齐
-			if (i+1)%albumsPerRow != 0 {
-				// 计算当前输出的长度
-				curLen := 4 + len([]rune(album.Name)) + 8 + len(fmt.Sprint(album.PhotoCount))
-				// 补充空格使下一列序号对齐
-				fmt.Print(strings.Repeat(" ", colWidth-curLen))
-			} else {
-				fmt.Println() // 换行
-			}
-		}
-		if len(albums)%albumsPerRow != 0 {
-			fmt.Println()
+			currentPageData = append(currentPageData, item)
 		}
 
-		fmt.Print("请输入要拉取的相册编号：")
-		var inputIndex int
-		_, err = fmt.Scanln(&inputIndex)
-		if err != nil || inputIndex < 0 || inputIndex > len(albums) {
-			fmt.Println("输入编号无效，请输入正确的编号。")
-			continue
+		// 合并当前页的数据到总数据中
+		allPicArrayData = append(allPicArrayData, currentPageData...)
+
+		// 判断是否还有更多数据
+		if photoList.Data.HasMore == 0 {
+			break
 		}
 
-		if inputIndex == 0 {
-			fmt.Println("正在收集所有相册的图片链接...")
-			// 下载全部相册，合并进度
-			type ImgTask struct {
-				Url       string
-				AlbumName string
-			}
-			var allTasks []ImgTask
-			pageSize := 999
-
-			// 添加相册收集进度
-			totalAlbums := len(albums)
-			for i, album := range albums {
-				fmt.Printf("\n正在处理相册(%d/%d): %s\n", i+1, totalAlbums, album.Name)
-				// 先获取总数，计算分页
-				imgApi := qzone.urlSetValue(qzone.imgApi, "albumid", album.AlbumID)
-				body, err := qzone.getResponse(ctx, imgApi)
-				if err != nil {
-					fmt.Printf("获取相册 %s 列表失败: %v\n", album.Name, err)
-					continue
-				}
-				data, err := utils.ParseJSON(body)
-				if err != nil {
-					fmt.Printf("解析相册 %s JSON 失败: %v\n", album.Name, err)
-					continue
-				}
-				if data["data"] == nil {
-					continue
-				}
-				dataMap, ok := data["data"].(map[string]interface{})
-				if !ok {
-					continue
-				}
-				totalCount, ok := dataMap["total_count"].(float64)
-				if !ok {
-					continue
-				}
-				pageCount := int(math.Ceil(totalCount/float64(pageSize))) - 1
-				// 只收集所有分页的图片链接，不在这里下载
-				for i := 0; i <= pageCount; i++ {
-					fmt.Printf("\r  - 正在处理第%d/%d页", i+1, pageCount+1)
-					pageApi := qzone.urlSetValue(imgApi, "ps", i*pageSize)
-					pageBody, err := qzone.getResponse(ctx, pageApi)
-					if err != nil {
-						fmt.Printf("获取相册 %s 第%d页失败: %v\n", album.Name, i+1, err)
-						continue
-					}
-					pageData, err := utils.ParseJSON(pageBody)
-					if err != nil {
-						fmt.Printf("解析相册 %s 第%d页JSON失败: %v\n", album.Name, i+1, err)
-						continue
-					}
-					if pageData["data"] == nil {
-						continue
-					}
-					pageDataMap, ok := pageData["data"].(map[string]interface{})
-					if !ok || pageDataMap["photos"] == nil {
-						continue
-					}
-					photos, ok := pageDataMap["photos"].(map[string]interface{})
-					if !ok {
-						continue
-					}
-					for _, photo := range photos {
-						photoMap, ok := photo.([]interface{})
-						if !ok {
-							continue
-						}
-						for _, subPhoto := range photoMap {
-							subPhotoMap, ok := subPhoto.(map[string]interface{})
-							if !ok {
-								continue
-							}
-							if imgInfo, ok := subPhotoMap["1"].(map[string]interface{}); ok {
-								if imgUrl, ok := imgInfo["url"].(string); ok {
-									allTasks = append(allTasks, ImgTask{
-										Url:       imgUrl,
-										AlbumName: album.Name,
-									})
-								}
-							}
-						}
-					}
-				}
-				fmt.Println() // 添加换行，分隔不同相册的处理信息
-			}
-			fmt.Println("\n链接收集完成，开始下载...")
-
-			totalLinks := len(allTasks)
-			if totalLinks == 0 {
-				fmt.Println("没有可下载的图片。")
-				continue
-			}
-
-			// 只在这里统一启动一次进度显示和下载
-			var wg sync.WaitGroup
-			semaphore := make(chan struct{}, threads)
-			var progressMutex sync.Mutex
-			progress := 0
-			done := make(chan struct{})
-
-			go func() {
-				for {
-					progressMutex.Lock()
-					cur := progress
-					progressMutex.Unlock()
-					fmt.Printf("\r正在下载 %d/%d ...", cur, totalLinks)
-					if cur >= totalLinks {
-						break
-					}
-					time.Sleep(200 * time.Millisecond)
-				}
-				fmt.Printf("\r下载完成 %d/%d          \n", totalLinks, totalLinks)
-				close(done)
-			}()
-
-			for idx, task := range allTasks {
-				wg.Add(1)
-				semaphore <- struct{}{}
-				go func(idx int, t ImgTask) {
-					defer func() {
-						if r := recover(); r != nil {
-							fmt.Printf("下载协程异常: %v\n", r)
-						}
-						wg.Done()
-						<-semaphore
-					}()
-					if err := utils.DownloadFileWithAlbum(t.Url, t.AlbumName); err != nil {
-						fmt.Printf("\nFailed to download %s: %v\n", t.Url, err)
-					}
-					progressMutex.Lock()
-					progress++
-					progressMutex.Unlock()
-				}(idx, task)
-			}
-			wg.Wait()
-			<-done
-		} else {
-			selectedAlbum := &albums[inputIndex-1]
-			// 拼接图片API
-			imgApi := qzone.urlSetValue(qzone.imgApi, "albumid", selectedAlbum.AlbumID)
-			err = qzone.ret(ctx, imgApi)
-			if err != nil {
-				fmt.Println(err)
-			}
-		}
+		// 增加页码
+		currentPage++
 	}
+
+	return allPicArrayData, nil
+}
+
+// 统一请求方法
+//
+//	@param apiUrl
+//	@return body
+func request(apiUrl string) (body []byte) {
+	httpClient := &http.Client{}
+	var req *http.Request
+	req, _ = http.NewRequest("GET", apiUrl, nil)
+	req.Header.Add("Cookie", cookie)
+
+	var response, err = httpClient.Do(req)
+	if err != nil {
+		fmt.Println("请求"+apiUrl+"接口失败:", err)
+		return
+	}
+	body, err = io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println("读取"+apiUrl+"接口返回数据失败:", err)
+		return
+	}
+	return body
+}
+
+// 相册格式化输出
+func picFormat() {
+	t := table_format.NewTable()
+	t.AddTitle(fmt.Sprintf("QQ：%s 相册列表", resUin))
+	header := table.Row{"相册名称", "相册数量", "最后更新", "访问权限", "相册描述"}
+	t.MakeHeader(header)
+	var rows []table.Row
+	for _, pic := range picArray {
+		_time := time.Unix(int64(pic.Lastupdatetime), 0).Format("2006-01-02")
+		_albumrights, _ := enum.ConvertRightsEnum(pic.Albumrights)
+		rows = append(rows, table.Row{pic.Albumname, pic.Albumnum, _time, _albumrights, pic.Desc})
+	}
+	t.AppendRows(rows)
+	t.Print()
 }
