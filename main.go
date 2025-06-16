@@ -114,7 +114,7 @@ func headerText() {
 	`)
 	fmt.Println("\n" +
 		"\033[36mName\033[0m：\033[32mQQ空间相册下载器(Golang)\033[0m\n" +
-		"\033[36mVersion\033[0m：\033[32m2.0.0\033[0m\n" +
+		"\033[36mVersion\033[0m：\033[32m2.2.0\033[0m\n" +
 		"\033[36mDescription\033[0m：\n" +
 		"	本程序用于下载QQ空间相册中的图片。\n" +
 		"	\033[33m使用方法\033[0m：\n" +
@@ -170,9 +170,9 @@ func newConfig() {
 		cookie = scanner.Text()
 	}
 	GlobalConfig.Cookie = cookie
-	if &GlobalConfig.Cookie == nil {
+	if &GlobalConfig.Cookie == nil || GlobalConfig.Cookie == "" {
 		color.Red("Cookie不能为空")
-		return
+		os.Exit(0)
 	}
 
 	gTk := fmt.Sprint(utils.GetGTK2(photoImgApi, utils.GetCookieKey(GlobalConfig.Cookie, "skey"), GlobalConfig.Cookie)) // 自动计算的gtk
@@ -182,11 +182,11 @@ func newConfig() {
 		_, err := fmt.Scanln(&GlobalConfig.GTk)
 		if err != nil {
 			fmt.Println(err)
-			return
+			os.Exit(0)
 		}
-		if &GlobalConfig.GTk == nil {
+		if &GlobalConfig.GTk == nil || GlobalConfig.GTk == "" {
 			color.Red("GTK不能为空")
-			return
+			os.Exit(0)
 		}
 	}
 
@@ -196,11 +196,11 @@ func newConfig() {
 		_, err := fmt.Scanln(&GlobalConfig.Uin)
 		if err != nil {
 			fmt.Println(err)
-			return
+			os.Exit(0)
 		}
-		if &GlobalConfig.Uin == nil {
+		if &GlobalConfig.Uin == nil || GlobalConfig.Uin == "" {
 			color.Red("Uin不能为空")
-			return
+			os.Exit(0)
 		}
 	}
 	err := utils.SaveConfig(GlobalConfig)
@@ -214,7 +214,7 @@ func getData() {
 	picList, err := getPicList()
 	picArray = picList
 	if err != nil {
-		color.Red("获取相册列表失败:", err)
+		color.Red("获取相册列表失败:%s", err)
 		return
 	} else if len(picArray) <= 0 {
 		color.Red("相册列表为空")
@@ -240,7 +240,8 @@ func getData() {
 			if picId > 0 {
 				err = getPhotoImages(picId)
 				if err != nil {
-					fmt.Println(err)
+					color.Red("%s", err)
+					continue
 				}
 				currenPicName = currenPic.Albumname
 			} else if picScanln == "" {
@@ -248,7 +249,8 @@ func getData() {
 				for i := range picArray {
 					err = getPhotoImages(i + 1)
 					if err != nil {
-						fmt.Println(err)
+						color.Red("%s", err)
+						continue
 					}
 				}
 				currenPicName = "全部相册"
@@ -270,6 +272,10 @@ func getData() {
 //
 //	@param picId	相册ID（序号）
 func getPhotoImages(picId int) (errs error) {
+	if picId <= 0 || picId > len(picArray) {
+		errs = fmt.Errorf("相册ID：%d不存在，请重新输入", picId)
+		return
+	}
 	picInfo := picArray[picId-1]
 	currenPic = picInfo
 	albumid := picInfo.Albumid
