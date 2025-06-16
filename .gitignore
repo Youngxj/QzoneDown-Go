@@ -21,3 +21,5 @@ images/
 
 # Go工作区文件
 go.work
+# Added by goreleaser init:
+dist/
