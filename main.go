@@ -8,7 +8,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/cheggaaa/pb/v3"
+	"github.com/fatih/color"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"io"
 	"math"
@@ -76,44 +76,141 @@ type photoListPicStruct struct {
 	Photos         [][]PhotoInfo
 }
 
-var cookie string = ""
-
-var gTk string = ""
-
-// var gTk string = fmt.Sprint(utils.GetGTK(utils.GetSkey(cookie)))// 自动计算的gtk在相册图片列表不适用（403异常）
-//var gTk string = fmt.Sprint(utils.GetGTK2(photoImgApi, utils.GetCookieKey(cookie, "skey"))) // 自动计算的gtk
-
-var resUin string = utils.GetUin(cookie)
-
 var picArray []photoListPicStruct // 相册信息列表
 var currenPic photoListPicStruct  // 当前相册信息
-var photoPn int = 20              // 相册图片列表分页
-var picPn int = 40                // 相册列表分页最小10，最大40
+var photoPn = 20                  // 相册图片列表分页
+var picPn = 40                    // 相册列表分页最小10，最大40
 
 var bar progress.Bar              // 下载总数进度条初始化
-var photoCount int                // 相册图片数量
 var photoDownSuccessNum int32 = 0 // 相册图片下载成功数量
 
 // 相册列表接口
-var photoListApi string = fmt.Sprintf("https://mobile.qzone.qq.com/list?g_tk=%s&format=json&list_type=album&action=0&res_uin=%s&count=%d&res_attach=", gTk, resUin, picPn)
+var photoListApi = "https://mobile.qzone.qq.com/list?g_tk=%s&format=json&list_type=album&action=0&res_uin=%s&count=%d&res_attach="
 
 // 相册图片列表接口
-var photoImgApi string = fmt.Sprintf("https://h5.qzone.qq.com/webapp/json/mqzone_photo/getPhotoList2?g_tk=%s&uin=%s&albumid=xxxxxxxxx&ps=0&pn=20&password=&password_cleartext=0&swidth=1080&sheight=1920", gTk, resUin)
+var photoImgApi = "https://h5.qzone.qq.com/webapp/json/mqzone_photo/getPhotoList2?g_tk=%s&uin=%s&albumid=xxxxxxxxx&ps=0&pn=20&password=&password_cleartext=0&swidth=1080&sheight=1920"
+
+// GlobalConfig 全局配置对象
+var GlobalConfig *utils.Configs
 
 func main() {
+	headerText()
+	configInit()
+	initApi()
+	getData()
+}
+
+// headerText
+func headerText() {
+	fmt.Println(`
+	
+   ____                       _____                      
+  / __ \                     |  __ \                     
+ | |  | | _______  _ __   ___| |  | | _____      ___ __  
+ | |  | ||_  / _ \| '_ \ / _ \ |  | |/ _ \ \ /\ / / '_ \ 
+ | |__| | / / (_) | | | |  __/ |__| | (_) \ V  V /| | | |
+  \___\_\/___\___/|_| |_|\___|_____/ \___/ \_/\_/ |_| |_|
+                                                         
+	`)
+	fmt.Println("\n" +
+		"\033[36mName\033[0m：\033[32mQQ空间相册下载器(Golang)\033[0m\n" +
+		"\033[36mVersion\033[0m：\033[32m2.0.0\033[0m\n" +
+		"\033[36mDescription\033[0m：\n" +
+		"	本程序用于下载QQ空间相册中的图片。\n" +
+		"	\033[33m使用方法\033[0m：\n" +
+		"		\033[34m1. 登录\033[4mhttps://qzone.qq.com\033[0m\033[34m并获取你的cookie以及g_tk和uin\n" +
+		"		2. 运行程序并输入你的cookie以及g_tk和uin\n" +
+		"		3. 程序会自动下载相册中的图片\033[0m\n" +
+		"\033[31mWarning\033[0m：本程序仅用于学习和研究，不得用于商业用途。\n")
+}
+
+// initApi 初始化API
+func initApi() {
+	photoListApi = fmt.Sprintf(photoListApi, GlobalConfig.GTk, GlobalConfig.Uin, picPn)
+	photoImgApi = fmt.Sprintf(photoImgApi, GlobalConfig.GTk, GlobalConfig.Uin)
+}
+
+// configInit 配置初始化
+func configInit() {
+	GlobalConfig, _ = utils.LoadConfig()
+	if GlobalConfig.Cookie == "" || GlobalConfig.GTk == "" || GlobalConfig.Uin == "" {
+		newConfig()
+	} else {
+		color.Red("已配置Cookie和GTK >>>")
+		fmt.Printf("%v%s\n%v%s\n%v%s\n", color.GreenString("Cookie："), GlobalConfig.Cookie, color.GreenString("GTk："), GlobalConfig.GTk, color.GreenString("Uin："), GlobalConfig.Uin)
+		isAgent := "y"
+		fmt.Print("是否使用已有配置？(y/n) 默认y：")
+		_, err := fmt.Scanln(&isAgent)
+		if err != nil {
+			return
+		}
+		if isAgent == "n" {
+			newConfig()
+		} else if isAgent == "y" {
+			//使用已有配置
+			return
+		} else {
+			fmt.Println("输入有误，请重新输入")
+			configInit()
+		}
+	}
+}
+
+// newConfig 新配置
+func newConfig() {
+	fmt.Print("请输入Cookie:")
+	cookie := ""
+	scanner := bufio.NewScanner(os.Stdin) // 特殊输入
+	if scanner.Scan() {
+		cookie = scanner.Text()
+	}
+	GlobalConfig.Cookie = cookie
+	if &GlobalConfig.Cookie == nil {
+		color.Red("Cookie不能为空")
+		return
+	}
+
+	gTk := fmt.Sprint(utils.GetGTK2(photoImgApi, utils.GetCookieKey(GlobalConfig.Cookie, "skey"), GlobalConfig.Cookie)) // 自动计算的gtk
+	GlobalConfig.GTk = gTk
+	if &GlobalConfig.GTk == nil {
+		fmt.Print("请输入GTK:")
+		fmt.Scanln(&GlobalConfig.GTk)
+		if &GlobalConfig.GTk == nil {
+			color.Red("GTK不能为空")
+			return
+		}
+	}
+
+	GlobalConfig.Uin = utils.GetUin(GlobalConfig.Cookie)
+	if &GlobalConfig.Uin == nil {
+		fmt.Print("请输入Uin:")
+		fmt.Scanln(&GlobalConfig.Uin)
+		if &GlobalConfig.Uin == nil {
+			color.Red("Uin不能为空")
+			return
+		}
+	}
+	err := utils.SaveConfig(GlobalConfig)
+	if err != nil {
+		return
+	}
+}
+
+// getData
+func getData() {
 	picList, err := getPicList()
 	picArray = picList
 	if err != nil {
-		fmt.Println("获取相册列表失败:", err)
+		color.Red("获取相册列表失败:", err)
 		return
 	} else if len(picArray) <= 0 {
-		fmt.Println("相册列表为空")
+		color.Red("相册列表为空")
 		return
 	}
 	picFormat() // 打印输出格式化表格
 	// 创建一个 Scanner 对象，用于读取标准输入
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("请输入编号继续操作，全部下载输入0，其他任意字符退出：")
+	color.Green("请输入编号继续操作 全部下载输入0 其他任意字符退出：（默认0）")
 	for {
 		// 提示用户输入
 		fmt.Print(">>> ")
@@ -122,8 +219,8 @@ func main() {
 			picScanln := scanner.Text() // 获取输入的文本
 			// 输入编号执行任务
 			picId, err := strconv.Atoi(picScanln)
-			if err != nil { // 非数字都退出
-				fmt.Println("程序即将退出……👋")
+			if picScanln != "" && err != nil { // 非数字或不等于空都退出
+				color.Red("程序即将退出……👋")
 				return
 			}
 			currenPicName := ""
@@ -133,7 +230,7 @@ func main() {
 					fmt.Println(err)
 				}
 				currenPicName = currenPic.Albumname
-			} else if picId == 0 {
+			} else if picScanln == "" {
 				// 全部下载
 				for i := range picArray {
 					err = getPhotoImages(i + 1)
@@ -143,14 +240,14 @@ func main() {
 				}
 				currenPicName = "全部相册"
 			} else {
-				fmt.Println("输入有误，请重新输入")
+				color.Red("输入有误，请重新输入")
 				continue
 			}
 			picFormat() // 打印输出格式化表格
-			fmt.Printf("<%s> 下载完成👌，请输入编号继续操作，全部下载输入0，其他任意字符退出：\n", currenPicName)
+			fmt.Printf("%v 请输入编号继续操作 全部下载输入0 其他任意字符退出：\n", color.GreenString(fmt.Sprintf("<%s> 下载完成👌", currenPicName)))
 		} else {
 			// 如果读取失败，打印错误信息
-			fmt.Println("程序即将退出……👋")
+			color.Red("程序即将退出……👋")
 			break
 		}
 	}
@@ -181,40 +278,6 @@ func getPhotoImages(picId int) (errs error) {
 	}
 	bar.Finish()
 	return errs
-}
-
-// 文件下载
-//
-//	@param url	下载链接
-//	@param savePath	保存路径
-//	@param fileName 文件名
-//	@return errs
-func download(url string, savePath string, fileName string) (written int64, errs error) {
-	res, err := http.Get(url)
-	if err != nil {
-		errs = fmt.Errorf("请求图片下载失败：%s", url)
-	}
-	utils.ExistDir(savePath) // 检查目录是否存在
-	defer res.Body.Close()
-
-	size := res.ContentLength
-	// 创建文件下载进度条
-	downBar := pb.Full.Start64(size)
-	defer downBar.Finish()
-
-	file, err := os.Create(savePath + fileName + ".jpg")
-	if err != nil {
-		errs = fmt.Errorf("创建文件失败：%s", savePath+fileName)
-	}
-	//获得文件的writer对象
-	writer := downBar.NewProxyWriter(file)
-	written, err = io.Copy(writer, res.Body)
-	if err != nil {
-		errs = fmt.Errorf("文件写入失败：%s", err)
-	}
-
-	file.Close() //解锁文件
-	return written, errs
 }
 
 // 获取相册Url链接
@@ -264,7 +327,7 @@ func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs
 				wg.Add(1) // 增加等待组计数
 				go func(url string) {
 					defer wg.Done() // 标记 goroutine 完成
-					_, err = download(url, "images/"+currenPic.Albumname+"/", utils.MD5(url))
+					_, err = utils.Download(url, "images/"+currenPic.Albumname+"/", utils.MD5(url))
 					if err != nil {
 						errs = fmt.Errorf("%s", err)
 					}
@@ -346,7 +409,7 @@ func request(apiUrl string) (body []byte) {
 	httpClient := &http.Client{}
 	var req *http.Request
 	req, _ = http.NewRequest("GET", apiUrl, nil)
-	req.Header.Add("Cookie", cookie)
+	req.Header.Add("Cookie", GlobalConfig.Cookie)
 
 	var response, err = httpClient.Do(req)
 	if err != nil {
@@ -364,7 +427,7 @@ func request(apiUrl string) (body []byte) {
 // 相册格式化输出
 func picFormat() {
 	t := table_format.NewTable()
-	t.AddTitle(fmt.Sprintf("QQ：%s 相册列表", resUin))
+	t.AddTitle(fmt.Sprintf("QQ：%s 相册列表", GlobalConfig.Uin))
 	header := table.Row{"相册名称", "相册数量", "最后更新", "访问权限", "相册描述"}
 	t.MakeHeader(header)
 	var rows []table.Row

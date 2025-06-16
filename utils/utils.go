@@ -3,7 +3,10 @@ package utils
 import (
 	"crypto/md5"
 	"fmt"
+	"github.com/cheggaaa/pb/v3"
+	"io"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -173,4 +176,38 @@ func Loading(str string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	fmt.Print("\033[H\033[2J")
+}
+
+// Download 文件下载
+//
+//	@param url	下载链接
+//	@param savePath	保存路径
+//	@param fileName 文件名
+//	@return errs
+func Download(url string, savePath string, fileName string) (written int64, errs error) {
+	res, err := http.Get(url)
+	if err != nil {
+		errs = fmt.Errorf("请求图片下载失败：%s", url)
+	}
+	ExistDir(savePath) // 检查目录是否存在
+	defer res.Body.Close()
+
+	size := res.ContentLength
+	// 创建文件下载进度条
+	downBar := pb.Full.Start64(size)
+	defer downBar.Finish()
+
+	file, err := os.Create(savePath + fileName + ".jpg")
+	if err != nil {
+		errs = fmt.Errorf("创建文件失败：%s", savePath+fileName)
+	}
+	//获得文件的writer对象
+	writer := downBar.NewProxyWriter(file)
+	written, err = io.Copy(writer, res.Body)
+	if err != nil {
+		errs = fmt.Errorf("文件写入失败：%s", err)
+	}
+
+	file.Close() //解锁文件
+	return written, errs
 }
