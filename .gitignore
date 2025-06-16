@@ -17,6 +17,7 @@ config.json
 *.log
 tmp/
 temp/
+images/
 
 # Go工作区文件
 go.work
