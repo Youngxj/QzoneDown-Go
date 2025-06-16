@@ -121,7 +121,7 @@ func headerText() {
 		"		\033[34m1. 登录\033[4mhttps://qzone.qq.com\033[0m\033[34m并获取你的cookie以及g_tk和uin\n" +
 		"		2. 运行程序并输入你的cookie以及g_tk和uin\n" +
 		"		3. 程序会自动下载相册中的图片\033[0m\n" +
-		"\033[31mWarning\033[0m：本程序仅用于学习和研究，不得用于商业用途。\n")
+		"\033[31mWarning\033[0m：本程序仅用于学习和研究，不得用于商业用途。")
 }
 
 // initApi 初始化API
@@ -132,15 +132,19 @@ func initApi() {
 
 // configInit 配置初始化
 func configInit() {
-	GlobalConfig, _ = utils.LoadConfig()
-	if GlobalConfig.Cookie == "" || GlobalConfig.GTk == "" || GlobalConfig.Uin == "" {
+	var err error
+	GlobalConfig, err = utils.LoadConfig()
+	if err != nil {
+		fmt.Println("err：", err)
+		newConfig()
+	} else if GlobalConfig.Cookie == "" || GlobalConfig.GTk == "" || GlobalConfig.Uin == "" {
 		newConfig()
 	} else {
 		color.Red("已配置Cookie和GTK >>>")
 		fmt.Printf("%v%s\n%v%s\n%v%s\n", color.GreenString("Cookie："), GlobalConfig.Cookie, color.GreenString("GTk："), GlobalConfig.GTk, color.GreenString("Uin："), GlobalConfig.Uin)
 		isAgent := "y"
 		fmt.Print("是否使用已有配置？(y/n) 默认y：")
-		_, err := fmt.Scanln(&isAgent)
+		_, err = fmt.Scanln(&isAgent)
 		if err != nil {
 			return
 		}
@@ -174,7 +178,11 @@ func newConfig() {
 	GlobalConfig.GTk = gTk
 	if &GlobalConfig.GTk == nil {
 		fmt.Print("请输入GTK:")
-		fmt.Scanln(&GlobalConfig.GTk)
+		_, err := fmt.Scanln(&GlobalConfig.GTk)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		if &GlobalConfig.GTk == nil {
 			color.Red("GTK不能为空")
 			return
@@ -184,7 +192,11 @@ func newConfig() {
 	GlobalConfig.Uin = utils.GetUin(GlobalConfig.Cookie)
 	if &GlobalConfig.Uin == nil {
 		fmt.Print("请输入Uin:")
-		fmt.Scanln(&GlobalConfig.Uin)
+		_, err := fmt.Scanln(&GlobalConfig.Uin)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		if &GlobalConfig.Uin == nil {
 			color.Red("Uin不能为空")
 			return
