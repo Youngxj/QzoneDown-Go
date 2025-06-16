@@ -1,10 +1,10 @@
 package main
 
 import (
-	"DzoneDown-Go/enum"
-	"DzoneDown-Go/utils"
-	"DzoneDown-Go/utils/progress"
-	"DzoneDown-Go/utils/table_format"
+	"QzoneDown-Go/enum"
+	"QzoneDown-Go/utils"
+	"QzoneDown-Go/utils/progress"
+	"QzoneDown-Go/utils/table_format"
 	"bufio"
 	"encoding/json"
 	"fmt"
