@@ -1,4 +1,7 @@
-name: Release
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
 
 on:
   push:
@@ -6,18 +9,16 @@ on:
       - v*
 
 jobs:
-  release:
+
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 // 官方要求
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4
         with:
-          go-version-file: "go.mod" // 使用 go.mod 文件中的 golang 版本
+          go-version-file: "go.mod" # 使用 go.mod 文件中的 golang 版本
 
       - name: Build
         run: go build -v ./
