@@ -116,12 +116,12 @@ func headerText() {
 		"\033[36mName\033[0m：\033[32mQQ空间相册下载器(Golang)\033[0m\n" +
 		"\033[36mVersion\033[0m：\033[32m2.2.0\033[0m\n" +
 		"\033[36mDescription\033[0m：\n" +
-		"	本程序用于下载QQ空间相册中的图片。\n" +
+		"	本程序用于下载自己或指定QQ空间相册中的图片。\n" +
 		"	\033[33m使用方法\033[0m：\n" +
-		"		\033[35m1. 登录\033[4mhttps://qzone.qq.com\033[0m\033[35m并获取你的cookie以及g_tk和uin\n" +
-		"		2. 运行程序并输入你的cookie以及g_tk和uin\n" +
-		"		3. 程序会自动下载相册中的图片\n" +
-		"		4. 图片下载完成后保存在images目录中\033[0m\n" +
+		"		\033[35m1. 登录\033[4mhttps://qzone.qq.com\033[0m\033[35m并获取你的cookie\n" +
+		"		2. 运行程序并输入你的cookie，g_tk和uin将自动识别\n" +
+		"		3. 按照要求输入，程序会自动下载相册中的图片\n" +
+		"		4. 图片下载完成后会按照相册名分类保存在images目录中\033[0m\n" +
 		"\033[31mWarning\033[0m：本程序仅用于学习和研究，不得用于商业用途。")
 }
 
@@ -137,9 +137,15 @@ func configInit() {
 	GlobalConfig, err = utils.LoadConfig()
 	if err != nil {
 		fmt.Println("err：", err)
-		newConfig()
+		err := newConfig("")
+		if err != nil {
+			color.Red("%s", err)
+		}
 	} else if GlobalConfig.Cookie == "" || GlobalConfig.GTk == "" || GlobalConfig.Uin == "" {
-		newConfig()
+		err := newConfig("")
+		if err != nil {
+			color.Red("%s", err)
+		}
 	} else {
 		color.Red("已配置Cookie和GTK >>>")
 		fmt.Printf("%v%s\n%v%s\n%v%s\n", color.GreenString("Cookie："), GlobalConfig.Cookie, color.GreenString("GTk："), GlobalConfig.GTk, color.GreenString("Uin："), GlobalConfig.Uin)
@@ -150,7 +156,10 @@ func configInit() {
 			return
 		}
 		if isAgent == "n" {
-			newConfig()
+			err := newConfig("")
+			if err != nil {
+				color.Red("%s", err)
+			}
 		} else if isAgent == "y" {
 			//使用已有配置
 			return
@@ -162,108 +171,130 @@ func configInit() {
 }
 
 // newConfig 新配置
-func newConfig() {
-	fmt.Print("请输入Cookie:")
-	cookie := ""
-	scanner := bufio.NewScanner(os.Stdin) // 特殊输入
-	if scanner.Scan() {
-		cookie = scanner.Text()
-	}
-	GlobalConfig.Cookie = cookie
-	if &GlobalConfig.Cookie == nil || GlobalConfig.Cookie == "" {
-		color.Red("Cookie不能为空")
-		os.Exit(0)
-	}
-
-	gTk := fmt.Sprint(utils.GetGTK2(photoImgApi, utils.GetCookieKey(GlobalConfig.Cookie, "skey"), GlobalConfig.Cookie)) // 自动计算的gtk
-	GlobalConfig.GTk = gTk
-	if &GlobalConfig.GTk == nil {
-		fmt.Print("请输入GTK:")
-		_, err := fmt.Scanln(&GlobalConfig.GTk)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(0)
+func newConfig(configType string) error {
+	if configType == "" || configType == "cookie" {
+		fmt.Print("请输入Cookie:")
+		cookie := ""
+		scanner := bufio.NewScanner(os.Stdin) // 特殊输入
+		if scanner.Scan() {
+			cookie = scanner.Text()
 		}
-		if &GlobalConfig.GTk == nil || GlobalConfig.GTk == "" {
-			color.Red("GTK不能为空")
+		GlobalConfig.Cookie = cookie
+		if &GlobalConfig.Cookie == nil || GlobalConfig.Cookie == "" {
+			color.Red("Cookie不能为空")
 			os.Exit(0)
 		}
 	}
 
-	GlobalConfig.Uin = utils.GetUin(GlobalConfig.Cookie)
-	if &GlobalConfig.Uin == nil {
-		fmt.Print("请输入Uin:")
-		_, err := fmt.Scanln(&GlobalConfig.Uin)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(0)
+	if configType == "" || configType == "gtk" {
+		gTk := fmt.Sprint(utils.GetGTK2(photoImgApi, utils.GetCookieKey(GlobalConfig.Cookie, "skey"), GlobalConfig.Cookie)) // 自动计算的gtk
+		GlobalConfig.GTk = gTk
+		if &GlobalConfig.GTk == nil {
+			fmt.Print("请输入GTK:")
+			_, err := fmt.Scanln(&GlobalConfig.GTk)
+			if err != nil {
+				color.Red("%s", err)
+				os.Exit(0)
+			}
+			if &GlobalConfig.GTk == nil || GlobalConfig.GTk == "" {
+				color.Red("GTK不能为空")
+				os.Exit(0)
+			}
 		}
+	}
+
+	uin := ""
+	if configType == "" || configType == "uin" {
+		fmt.Print("请输入要访问的相册QQ号(默认当前登录QQ号):")
+		scanner := bufio.NewScanner(os.Stdin) // 特殊输入
+		if scanner.Scan() {
+			uin = scanner.Text()
+		}
+		if uin == "" {
+			GlobalConfig.Uin = utils.GetUin(GlobalConfig.Cookie)
+		} else {
+			GlobalConfig.Uin = uin
+		}
+
 		if &GlobalConfig.Uin == nil || GlobalConfig.Uin == "" {
 			color.Red("Uin不能为空")
 			os.Exit(0)
 		}
 	}
 	err := utils.SaveConfig(GlobalConfig)
-	if err != nil {
-		return
-	}
+	return err
 }
 
 // getData
 func getData() {
-	picList, err := getPicList()
-	picArray = picList
-	if err != nil {
-		color.Red("获取相册列表失败:%s", err)
-		return
-	} else if len(picArray) <= 0 {
-		color.Red("相册列表为空")
-		return
-	}
-	picFormat() // 打印输出格式化表格
-	// 创建一个 Scanner 对象，用于读取标准输入
-	scanner := bufio.NewScanner(os.Stdin)
-	color.Green("请输入编号继续操作 全部下载输入0 其他任意字符退出：（默认0）")
+	actionTips := "请输入编号继续操作 0=全部下载 q=切换QQ号 (默认0)："
+	exitTips := "程序即将退出……👋"
 	for {
-		// 提示用户输入
-		fmt.Print(">>> ")
-		// 读取一行输入
-		if scanner.Scan() {
-			picScanln := scanner.Text() // 获取输入的文本
-			// 输入编号执行任务
-			picId, err := strconv.Atoi(picScanln)
-			if picScanln != "" && err != nil { // 非数字或不等于空都退出
-				color.Red("程序即将退出……👋")
-				return
-			}
-			currenPicName := ""
-			if picId > 0 {
-				err = getPhotoImages(picId)
-				if err != nil {
-					color.Red("%s", err)
-					continue
+		picList, err := getPicList()
+		picArray = picList
+		if err != nil {
+			color.Red("获取相册列表失败:%s", err)
+			return
+		} else if len(picArray) <= 0 {
+			color.Red("相册列表为空")
+			return
+		}
+		picFormat() // 打印输出格式化表格
+		// 创建一个 Scanner 对象，用于读取标准输入
+		scanner := bufio.NewScanner(os.Stdin)
+		color.Green(actionTips)
+		for {
+			// 提示用户输入
+			fmt.Print(">>> ")
+			// 读取一行输入
+			if scanner.Scan() {
+				picScanln := scanner.Text() // 获取输入的文本
+				// 输入编号执行任务
+				picId, err := strconv.Atoi(picScanln)
+				if picScanln != "" && err != nil && picScanln != "q" { // 非特定条件都退出程序
+					color.Red(exitTips)
+					return
 				}
-				currenPicName = currenPic.Albumname
-			} else if picScanln == "" {
-				// 全部下载
-				for i := range picArray {
-					err = getPhotoImages(i + 1)
+				currenPicName := ""
+				if picId > 0 {
+					err = getPhotoImages(picId)
 					if err != nil {
 						color.Red("%s", err)
 						continue
 					}
+					currenPicName = currenPic.Albumname
+				} else if picScanln == "" {
+					// 全部下载
+					for i := range picArray {
+						err = getPhotoImages(i + 1)
+						if err != nil {
+							color.Red("%s", err)
+							continue
+						}
+					}
+					currenPicName = "全部相册"
+				} else if picScanln == "q" {
+					// 调用 setUin 方法
+					err := newConfig("uin")
+					if err != nil {
+						color.Red("%s", err)
+					}
+					// 跳出内层循环，重新执行流程
+					break
+				} else {
+					color.Red("输入有误，请重新输入")
+					continue
 				}
-				currenPicName = "全部相册"
+				picFormat() // 打印输出格式化表格
+				if err == nil {
+					color.Green(fmt.Sprintf("<%s> 下载完成👌", currenPicName))
+				}
+				fmt.Println(actionTips)
 			} else {
-				color.Red("输入有误，请重新输入")
-				continue
+				// 如果读取失败，打印错误信息
+				color.Red(exitTips)
+				return
 			}
-			picFormat() // 打印输出格式化表格
-			fmt.Printf("%v 请输入编号继续操作 全部下载输入0 其他任意字符退出：\n", color.GreenString(fmt.Sprintf("<%s> 下载完成👌", currenPicName)))
-		} else {
-			// 如果读取失败，打印错误信息
-			color.Red("程序即将退出……👋")
-			break
 		}
 	}
 }
@@ -306,6 +337,7 @@ func getPhotoImages(picId int) (errs error) {
 func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs error) {
 	photoUrl := utils.UrlSetValue(photoImgApi, "albumid", albumid)
 	photoUrl = utils.UrlSetValue(photoUrl, "ps", strconv.Itoa(page*photoPn))
+	photoUrl = utils.UrlSetValue(photoUrl, "uin", GlobalConfig.Uin)
 	//fmt.Println("photoUrl", photoUrl)
 	//return
 	body := request(photoUrl)
@@ -374,8 +406,8 @@ func getPicList() (picArrayData []photoListPicStruct, err error) {
 	for {
 		// 构建当前页码的请求 URL
 		resAttach := fmt.Sprintf("att=start_count=%d", (currentPage-1)*picPn)
-		currentPhotoListApi := utils.UrlSetValue(photoListApi, "res_attach", resAttach)
-
+		photoListApi = utils.UrlSetValue(photoListApi, "res_attach", resAttach)
+		currentPhotoListApi := utils.UrlSetValue(photoListApi, "res_uin", GlobalConfig.Uin)
 		// 发起请求
 		body := request(currentPhotoListApi)
 		var photoList photoListResponseStruct
