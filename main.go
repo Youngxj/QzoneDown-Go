@@ -346,7 +346,7 @@ func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs
 				wg.Add(1) // 增加等待组计数
 				go func(url string) {
 					defer wg.Done() // 标记 goroutine 完成
-					_, err = utils.Download(url, "images/"+currenPic.Albumname+"/", utils.MD5(url))
+					_, err = utils.Download(url, "images/"+utils.FileNameFiltering(currenPic.Albumname)+"/", utils.MD5(url))
 					if err != nil {
 						errs = fmt.Errorf("%s", err)
 					}

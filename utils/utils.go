@@ -211,3 +211,27 @@ func Download(url string, savePath string, fileName string) (written int64, errs
 	file.Close() //解锁文件
 	return written, errs
 }
+
+// FileNameFiltering 文件名过滤
+//
+//	@param fileName
+//	@return string
+func FileNameFiltering(fileName string) string {
+	// 定义要替换的字符
+	replaceMap := map[string]string{
+		"\\": "",
+		"/":  "",
+		":":  "",
+		"*":  "",
+		"?":  "",
+		"\"": "",
+		"<":  "",
+		">":  "",
+		"|":  "",
+	}
+	// 遍历替换字符
+	for oldChar, newChar := range replaceMap {
+		fileName = strings.ReplaceAll(fileName, oldChar, newChar)
+	}
+	return fileName
+}
