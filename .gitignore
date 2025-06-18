@@ -18,6 +18,7 @@ config.json
 tmp/
 temp/
 images/
+login_qrcode.jpg
 
 # Go工作区文件
 go.work

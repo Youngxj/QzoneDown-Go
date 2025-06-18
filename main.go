@@ -3,6 +3,8 @@ package main
 import (
 	"QzoneDown-Go/enum"
 	"QzoneDown-Go/utils"
+	"QzoneDown-Go/utils/login"
+	_ "QzoneDown-Go/utils/login"
 	"QzoneDown-Go/utils/progress"
 	"QzoneDown-Go/utils/table_format"
 	"bufio"
@@ -10,6 +12,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/jedib0t/go-pretty/v6/table"
+
 	"io"
 	"math"
 	"net/http"
@@ -114,7 +117,7 @@ func headerText() {
 	`)
 	fmt.Println("\n" +
 		"\033[36mName\033[0m：\033[32mQQ空间相册下载器(Golang)\033[0m\n" +
-		"\033[36mVersion\033[0m：\033[32m2.2.0\033[0m\n" +
+		"\033[36mVersion\033[0m：\033[32m2.3.0\033[0m\n" +
 		"\033[36mDescription\033[0m：\n" +
 		"	本程序用于下载自己或指定QQ空间相册中的图片。\n" +
 		"	\033[33m使用方法\033[0m：\n" +
@@ -142,9 +145,18 @@ func configInit() {
 			color.Red("%s", err)
 		}
 	} else if GlobalConfig.Cookie == "" || GlobalConfig.GTk == "" || GlobalConfig.Uin == "" {
-		err := newConfig("")
+		err := login.GetClientCookie()
 		if err != nil {
 			color.Red("%s", err)
+			err = newConfig("")
+			if err != nil {
+				color.Red("%s", err)
+			}
+		} else {
+			err = newConfig("gtk")
+			if err != nil {
+				color.Red("%s", err)
+			}
 		}
 	} else {
 		color.Red("已配置Cookie和GTK >>>")
@@ -156,9 +168,18 @@ func configInit() {
 			return
 		}
 		if isAgent == "n" {
-			err := newConfig("")
+			err := login.GetClientCookie()
 			if err != nil {
 				color.Red("%s", err)
+				err = newConfig("")
+				if err != nil {
+					color.Red("%s", err)
+				}
+			} else {
+				err = newConfig("gtk")
+				if err != nil {
+					color.Red("%s", err)
+				}
 			}
 		} else if isAgent == "y" {
 			//使用已有配置
@@ -172,6 +193,7 @@ func configInit() {
 
 // newConfig 新配置
 func newConfig(configType string) error {
+	GlobalConfig, _ = utils.LoadConfig()
 	if configType == "" || configType == "cookie" {
 		fmt.Print("请输入Cookie:")
 		cookie := ""

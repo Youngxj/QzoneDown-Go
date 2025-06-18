@@ -11,7 +11,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -171,9 +170,6 @@ func Loading(str string) {
 		// 打印加载动画
 		fmt.Printf("\r%s %s", str, animation[i%len(animation)])
 		os.Stdout.Sync() // 确保立即打印
-
-		// 等待一段时间
-		time.Sleep(100 * time.Millisecond)
 	}
 	fmt.Print("\033[H\033[2J")
 }
