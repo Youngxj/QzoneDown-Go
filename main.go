@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"math/rand/v2"
 
 	"io"
 	"math"
@@ -332,7 +333,7 @@ func getPhotoImages(picId int) (errs error) {
 	picInfo := picArray[picId-1]
 	currenPic = picInfo
 	albumid := picInfo.Albumid
-	fmt.Printf("开始下载 相册名称：%s 照片数量：%d albumid：%s \n", picInfo.Albumname, picInfo.Albumnum, albumid)
+	fmt.Printf("开始下载 相册名称：%s 照片数量：%s albumid：%s \n", color.CyanString(picInfo.Albumname), color.CyanString(strconv.Itoa(picInfo.Albumnum)), albumid)
 
 	bar = progress.Bar{} // 在这里重新初始化bar，否则会出现进度条叠加的情况
 	bar.NewOptionWithGraph(0, int64(picInfo.Albumnum), "✨")
@@ -379,6 +380,12 @@ func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs
 	for _, photo := range photosData {
 		for _, info := range photo.([]interface{}) {
 			_info := info.(map[string]interface{})
+
+			var timestamp = time.Now().Unix()
+			if uploadTime, ok := _info["uUploadTime"].(float64); ok {
+				timestamp = int64(uploadTime)
+			}
+			uUploadTimeString := time.Unix(timestamp, 0).Format("20060102150405")
 			// 检查 _info["1"] 是否存在
 			if data, ok := _info["1"]; ok {
 				// 将 data 序列化为 JSON 字节切片
@@ -400,7 +407,8 @@ func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs
 				wg.Add(1) // 增加等待组计数
 				go func(url string) {
 					defer wg.Done() // 标记 goroutine 完成
-					_, err = utils.Download(url, "images/"+utils.FileNameFiltering(currenPic.Albumname)+"/", utils.MD5(url))
+					fileName := fmt.Sprintf("%s_%04d", uUploadTimeString, rand.IntN(10000))
+					_, err = utils.Download(url, "images/"+utils.FileNameFiltering(currenPic.Albumname)+"/", fileName)
 					if err != nil {
 						errs = fmt.Errorf("%s", err)
 					}
