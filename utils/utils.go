@@ -74,16 +74,20 @@ func GetGTK(skey string) int32 {
 
 // GetCookieKey 模拟从 cookie 获取值的函数
 func GetCookieKey(cookieString string, key string) string {
-	re := regexp.MustCompile(key + `=([^;]+)`)
-	match := re.FindStringSubmatch(cookieString)
+	cookieMap := ParseRawCookieLine(cookieString)
+	return cookieMap[key]
+}
 
-	var val string
-	if len(match) > 1 {
-		val = match[1]
-	} else {
-		val = ""
+// ParseRawCookieLine 解析Cookie值
+func ParseRawCookieLine(line string) map[string]string {
+	m := make(map[string]string)
+	for _, part := range strings.Split(line, ";") {
+		part = strings.TrimSpace(part)
+		if i := strings.Index(part, "="); i > 0 {
+			m[strings.TrimSpace(part[:i])] = strings.TrimSpace(part[i+1:])
+		}
 	}
-	return val
+	return m
 }
 
 // GetSkey 获取cookie中skey参数
@@ -135,6 +139,7 @@ func GetGTK2(urlString, skey string, cookie string) int32 {
 			str = GetCookieKey(cookie, "rv2")
 		}
 	}
+	fmt.Println("GetGTK2 skey:", str)
 
 	// 计算哈希值
 	hash := int32(5381)
