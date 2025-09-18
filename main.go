@@ -256,7 +256,7 @@ func getData() {
 		picList, err := getPicList()
 		picArray = picList
 		if err != nil {
-			color.Red("获取相册列表失败:%s", err)
+			color.Red("%s", err)
 			return
 		} else if len(picArray) <= 0 {
 			color.Red("相册列表为空")
@@ -363,9 +363,13 @@ func getPhotoImageUrls(albumid string, page int) (photoImgList []PhotoInfo, errs
 	photoUrl = utils.UrlSetValue(photoUrl, "uin", GlobalConfig.Uin)
 	//fmt.Println("photoUrl", photoUrl)
 	//return
-	body := request(photoUrl)
+	body, err := request(photoUrl)
+	if err != nil {
+		errs = fmt.Errorf("%s", err)
+		return
+	}
 	var photoImgListResponse photoImgListResponseStruct
-	err := json.Unmarshal(body, &photoImgListResponse)
+	err = json.Unmarshal(body, &photoImgListResponse)
 	if err != nil {
 		errs = fmt.Errorf("解析 JSON 数据失败.getPhotoImages：%s", err)
 		return
@@ -439,16 +443,20 @@ func getPicList() (picArrayData []photoListPicStruct, err error) {
 		photoListApi = utils.UrlSetValue(photoListApi, "res_attach", resAttach)
 		currentPhotoListApi := utils.UrlSetValue(photoListApi, "res_uin", GlobalConfig.Uin)
 		// 发起请求
-		body := request(currentPhotoListApi)
+		body, err := request(currentPhotoListApi)
+		if err != nil {
+			err = fmt.Errorf("获取相册图片列表失败:%s", err)
+			return nil, err
+		}
 		var photoList photoListResponseStruct
 		err = json.Unmarshal(body, &photoList)
 		if err != nil {
 			err = fmt.Errorf("解析 JSON 数据失败.getPicList：%s", err)
-			return
+			return nil, err
 		}
 		if photoList.Code != 0 {
 			err = fmt.Errorf("接口返回错误：%s", photoList.Message)
-			return
+			return nil, err
 		}
 
 		// 提取当前页的相册数据
@@ -486,23 +494,28 @@ func getPicList() (picArrayData []photoListPicStruct, err error) {
 //
 //	@param apiUrl
 //	@return body
-func request(apiUrl string) (body []byte) {
+func request(apiUrl string) (body []byte, err error) {
 	httpClient := &http.Client{}
 	var req *http.Request
 	req, _ = http.NewRequest("GET", apiUrl, nil)
 	req.Header.Add("Cookie", GlobalConfig.Cookie)
 
-	var response, err = httpClient.Do(req)
+	response, err := httpClient.Do(req)
 	if err != nil {
-		fmt.Println("请求"+apiUrl+"接口失败:", err)
-		return
+		err = fmt.Errorf("请求"+apiUrl+"接口失败:%s", err)
+		return nil, err
 	}
+	if response.StatusCode != 200 {
+		err = fmt.Errorf("请求"+apiUrl+"接口失败:%s", response.Status)
+		return nil, err
+	}
+
 	body, err = io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Println("读取"+apiUrl+"接口返回数据失败:", err)
-		return
+		err = fmt.Errorf("读取"+apiUrl+"接口返回数据失败:%s", err)
+		return nil, err
 	}
-	return body
+	return body, err
 }
 
 // 相册格式化输出
