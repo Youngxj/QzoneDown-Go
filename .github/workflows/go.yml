@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod" # 使用 go.mod 文件中的 golang 版本
 
@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
 
@@ -73,7 +73,7 @@ jobs:
       # 构建GUI版本
       - name: Build GUI version
         env:
-          CGO_ENABLED: 1
+          CGO_ENABLED= 1
         run: |
           cd gui
           go build -o ../build/gui/QzoneDown-GUI-${{ runner.os }}-amd64 .
@@ -96,7 +96,7 @@ jobs:
 
       # 上传构建产物
       - name: Upload GUI artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: QzoneDown-GUI-${{ runner.os }}-amd64
           path: build/gui/${{ env.PACKAGE_NAME }}
@@ -157,7 +157,7 @@ jobs:
           echo "  - macOS: 无特殊要求" >> release_notes.md
 
       - name: Update Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body_path: release_notes.md
           files: |
