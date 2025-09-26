@@ -1,0 +1,8 @@
+Website = "https://github.com/Youngxj/QzoneDown-Go"
+
+[Details]
+  Icon = "Icon.png"
+  Name = "QzoneDown"
+  ID = "io.youngxj.qzonedown"
+  Version = "2.6.0"
+  Build = 3

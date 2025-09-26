@@ -11,6 +11,7 @@ type Bar struct {
 	total   int64  // 总进度
 	rate    string // 进度条
 	graph   string // 显示符号
+	IsGui   bool   // 是否为Gui显示
 }
 
 // NewOption 新配置
@@ -45,14 +46,19 @@ func (bar *Bar) getPercent() int64 {
 //
 //	@receiver bar
 //	@param cur	当前进度数
-func (bar *Bar) Play(cur int64) {
+func (bar *Bar) Play(cur int64) string {
 	bar.cur = cur
 	bar.percent = bar.getPercent()
 	bar.rate = ""
 	for i := 0; i < int(bar.percent); i += 2 {
 		bar.rate += bar.graph
 	}
-	fmt.Printf("\r[%-50s] %3d%%", bar.rate, bar.percent)
+	if bar.IsGui {
+		return fmt.Sprintf("\r[%-50s] %3d%%", bar.rate, bar.percent)
+	} else {
+		fmt.Printf("\r[%-50s] %3d%%", bar.rate, bar.percent)
+		return ""
+	}
 }
 
 // Finish 完成进度
