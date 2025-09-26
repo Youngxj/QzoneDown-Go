@@ -10,7 +10,8 @@ on:
 
 jobs:
 
-  build:
+  # 构建主程序（CLI版本）
+  build-cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,12 +23,146 @@ jobs:
         with:
           go-version-file: "go.mod" # 使用 go.mod 文件中的 golang 版本
 
-      - name: Run GoReleaser
+      - name: Build CLI version
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean
+          args: release --clean --config .goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
 
+  # 构建GUI程序（Fyne版本）
+  build-gui:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: "go.mod"
+
+      # 安装GUI依赖
+      - name: Install GUI dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxcursor-dev libxinerama-dev libxi-dev
+
+      - name: Install GUI dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # macOS通常不需要额外安装GUI依赖
+
+      - name: Install GUI dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          # Windows通常不需要额外安装GUI依赖
+
+      # 设置CGO环境变量
+      - name: Set CGO environment
+        run: |
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+
+      # 构建GUI版本
+      - name: Build GUI version
+        env:
+          CGO_ENABLED: 1
+        run: |
+          cd gui
+          go build -o ../build/gui/QzoneDown-GUI-${{ runner.os }}-amd64 .
+
+      # 打包GUI版本
+      - name: Package GUI version
+        run: |
+          cd build/gui
+          # 根据操作系统创建不同的包
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            tar -czf QzoneDown-GUI-linux-amd64.tar.gz QzoneDown-GUI-Linux-amd64
+            echo "PACKAGE_NAME=QzoneDown-GUI-linux-amd64.tar.gz" >> $GITHUB_ENV
+          elif [ "${{ runner.os }}" == "macOS" ]; then
+            tar -czf QzoneDown-GUI-darwin-amd64.tar.gz QzoneDown-GUI-Darwin-amd64
+            echo "PACKAGE_NAME=QzoneDown-GUI-darwin-amd64.tar.gz" >> $GITHUB_ENV
+          elif [ "${{ runner.os }}" == "Windows" ]; then
+            7z a -tzip QzoneDown-GUI-windows-amd64.zip QzoneDown-GUI-Windows-amd64.exe
+            echo "PACKAGE_NAME=QzoneDown-GUI-windows-amd64.zip" >> $GITHUB_ENV
+          fi
+
+      # 上传构建产物
+      - name: Upload GUI artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: QzoneDown-GUI-${{ runner.os }}-amd64
+          path: build/gui/${{ env.PACKAGE_NAME }}
+
+      # 创建Release并上传GUI版本
+      - name: Upload GUI to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/gui/${{ env.PACKAGE_NAME }}
+          asset_name: ${{ env.PACKAGE_NAME }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  # 创建Release说明
+  create-release:
+    needs: [ build-cli, build-gui ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          # 从git tag生成release notes
+          echo "## 🚀 QzoneDown-Go Release ${{ github.ref_name }}" > release_notes.md
+          echo "" >> release_notes.md
+          echo "### 📦 下载地址" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### CLI版本（命令行工具）" >> release_notes.md
+          echo "- [Linux版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-Go_Linux_x86_64.tar.gz)" >> release_notes.md
+          echo "- [Windows版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-Go_Windows_x86_64.zip)" >> release_notes.md
+          echo "- [macOS版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-Go_Darwin_x86_64.tar.gz)" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### GUI版本（图形界面）" >> release_notes.md
+          echo "- [Linux GUI版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-GUI-linux-amd64.tar.gz)" >> release_notes.md
+          echo "- [Windows GUI版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-GUI-windows-amd64.zip)" >> release_notes.md
+          echo "- [macOS GUI版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-GUI-darwin-amd64.tar.gz)" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### 📋 使用说明" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### CLI版本" >> release_notes.md
+          echo "\`\`\`bash" >> release_notes.md
+          echo "# 下载并解压后运行" >> release_notes.md
+          echo "./QzoneDown-Go" >> release_notes.md
+          echo "\`\`\`" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### GUI版本" >> release_notes.md
+          echo "1. 下载对应系统的GUI版本" >> release_notes.md
+          echo "2. 解压文件" >> release_notes.md
+          echo "3. 运行可执行文件" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### 🔧 系统要求" >> release_notes.md
+          echo "- **CLI版本**: Go 1.19+ 环境" >> release_notes.md
+          echo "- **GUI版本**: " >> release_notes.md
+          echo "  - Linux: 需要libgl1-mesa-dev等GUI库" >> release_notes.md
+          echo "  - Windows: 无特殊要求" >> release_notes.md
+          echo "  - macOS: 无特殊要求" >> release_notes.md
+
+      - name: Update Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release_notes.md
+          files: |
+            build/gui/QzoneDown-GUI-linux-amd64.tar.gz
+            build/gui/QzoneDown-GUI-windows-amd64.zip
+            build/gui/QzoneDown-GUI-darwin-amd64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
