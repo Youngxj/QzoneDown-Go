@@ -73,7 +73,7 @@ jobs:
       # 构建GUI版本
       - name: Build GUI version
         env:
-          CGO_ENABLED= 1
+          CGO_ENABLED: 1
         run: |
           cd gui
           go build -o ../build/gui/QzoneDown-GUI-${{ runner.os }}-amd64 .
