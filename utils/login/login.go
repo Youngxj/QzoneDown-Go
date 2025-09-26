@@ -17,9 +17,9 @@ import (
 	"runtime"
 )
 
-var loginURL = "https://i.qq.com/"             // 登录URL
-var loginQrcode []byte                         // 登录二维码
-var loginQrcodeSrc string = "login_qrcode.jpg" // 登录二维码图片地址
+var loginURL = "https://i.qq.com/"        // 登录URL
+var loginQrcode []byte                    // 登录二维码
+var QrcodeSrc string = "login_qrcode.jpg" // 登录二维码图片地址
 
 // GetClientCookie 获取客户端Cookie
 func GetClientCookie() error {
@@ -63,22 +63,22 @@ func myTasks() chromedp.Tasks {
 		chromedp.Screenshot(`#login_frame`, &loginQrcode, chromedp.NodeVisible), // 获取二维码图片地址
 		chromedp.ActionFunc(func(ctx context.Context) (err error) {
 			// 1. 保存文件
-			if err = os.WriteFile(loginQrcodeSrc, loginQrcode, 0755); err != nil {
+			if err = os.WriteFile(QrcodeSrc, loginQrcode, 0755); err != nil {
 				return
 			}
-			err = getLoginCode()
+			_, err = GetLoginCode(QrcodeSrc, "")
 			if err != nil {
-				return err
-			}
-			err = os.Remove(loginQrcodeSrc)
-			if err != nil {
-				color.Red("删除文件失败:%s", err)
 				return err
 			}
 			return
 		}),
 		chromedp.WaitVisible(`#tb_logout`, chromedp.BySearch), // 等待退出登录按钮出现
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			err := os.Remove(QrcodeSrc)
+			if err != nil {
+				color.Red("删除文件失败:%s", err)
+				return err
+			}
 			// 获取cookie
 			cookies, err := network.GetCookies().Do(ctx)
 			// 将cookie拼接成header请求中cookie字段的模式
@@ -100,45 +100,48 @@ func myTasks() chromedp.Tasks {
 	}
 }
 
-// 获取登录二维码
-func getLoginCode() error {
+// GetLoginCode 获取登录二维码
+func GetLoginCode(qrSrc string, outputType string) (qr *goQrcode.QRCode, err error) {
 	// 1. 打开二维码图片
-	file, err := os.Open(loginQrcodeSrc) // 替换为你的二维码图片路径
+	file, err := os.Open(qrSrc) // 替换为你的二维码图片路径
 	if err != nil {
-		return fmt.Errorf("无法打开图片:%s", err)
+		return nil, fmt.Errorf("无法打开图片:%s", err)
 	}
 	defer file.Close()
 
 	// 2. 解码图片
 	img, _, err := image.Decode(file)
 	if err != nil {
-		return fmt.Errorf("无法解码图片:%s", err)
+		return nil, fmt.Errorf("无法解码图片:%s", err)
 	}
 
 	// 3. 创建二维码解码器
 	bmp, err := gozxing.NewBinaryBitmapFromImage(img)
 	if err != nil {
-		return fmt.Errorf("无法创建二维码位图:%s", err)
+		return nil, fmt.Errorf("无法创建二维码位图:%s", err)
 	}
 
 	// 4. 识别二维码
 	qrReader := qrcode.NewQRCodeReader()
 	result, err := qrReader.Decode(bmp, nil)
 	if err != nil {
-		return fmt.Errorf("二维码识别失败:%s", err)
+		return nil, fmt.Errorf("二维码识别失败:%s", err)
 	}
 
 	// 5. 用结果来获取go-qrcode对象
-	qr, err := goQrcode.New(result.GetText(), goQrcode.Medium)
+	qr, err = goQrcode.New(result.GetText(), goQrcode.Medium)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 6. 输出到标准输出流
 	fmt.Println(qr.ToSmallString(false))
 	color.Cyan("请使用手机QQ扫描二维码登录，自动获取Cookie")
+	if outputType == "qrObject" {
+		return qr, nil
+	}
 
-	return err
+	return nil, err
 }
 
 // 设置cookie
@@ -149,6 +152,7 @@ func setCookie(cookie string) error {
 	config, _ := utils.LoadConfig()
 	config.Cookie = cookie
 	config.Uin = utils.GetUin(cookie)
+	config.GTk = fmt.Sprint(utils.GetGTK2("", utils.GetCookieKey(cookie, "p_skey"), cookie))
 	err := utils.SaveConfig(config)
 	return err
 }
