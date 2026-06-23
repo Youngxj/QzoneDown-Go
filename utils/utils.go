@@ -229,10 +229,30 @@ func FileNameFiltering(fileName string) string {
 		"<":  "",
 		">":  "",
 		"|":  "",
+		"~":  "",
 	}
 	// 遍历替换字符
 	for oldChar, newChar := range replaceMap {
 		fileName = strings.ReplaceAll(fileName, oldChar, newChar)
+	}
+	// 去除尾部空格和点号（Windows不允许）
+	fileName = strings.TrimRight(fileName, ". ")
+	// Windows保留名称加下划线后缀
+	reservedNames := []string{
+		"CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+	}
+	upperName := strings.ToUpper(fileName)
+	for _, reserved := range reservedNames {
+		if upperName == reserved {
+			fileName = fileName + "_"
+			break
+		}
+	}
+	// 如果过滤后为空，使用默认名
+	if fileName == "" {
+		fileName = "unnamed"
 	}
 	return fileName
 }

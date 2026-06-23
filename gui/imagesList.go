@@ -200,7 +200,7 @@ func downloadImage(photoUrl string, Albumname string) (err error) {
 	go func(url string) {
 		defer wg.Done() // 标记 goroutine 完成
 		fileName := fmt.Sprintf("%s_%04d", uUploadTimeString, rand.IntN(10000))
-		_, err := utils.Download(url, "images/"+utils.FileNameFiltering(Albumname)+"/", fileName)
+		_, err := utils.Download(url, "images/"+api.GlobalConfig.Uin+"/"+utils.FileNameFiltering(Albumname)+"/", fileName)
 		if err != nil {
 			fmt.Println("Download err", err)
 		}

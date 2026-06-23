@@ -6,8 +6,9 @@ import (
 	"QzoneDown-Go/utils/progress"
 	"encoding/json"
 	"fmt"
-	"github.com/fatih/color"
 	"math/rand/v2"
+
+	"github.com/fatih/color"
 
 	"io"
 	"math"
@@ -156,7 +157,7 @@ func downloadImage(photoUrl string, Albumname string, fn func()) (err error) {
 	go func(url string) {
 		defer wg.Done() // 标记 goroutine 完成
 		fileName := fmt.Sprintf("%s_%04d", uUploadTimeString, rand.IntN(10000))
-		_, err := utils.Download(url, "images/"+utils.FileNameFiltering(Albumname)+"/", fileName)
+		_, err := utils.Download(url, "images/"+GlobalConfig.Uin+"/"+utils.FileNameFiltering(Albumname)+"/", fileName)
 		if err != nil {
 			fmt.Println("Download err", err)
 		}

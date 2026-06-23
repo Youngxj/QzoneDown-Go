@@ -9,11 +9,12 @@ import (
 	"QzoneDown-Go/utils/table_format"
 	"bufio"
 	"fmt"
-	"github.com/fatih/color"
-	"github.com/jedib0t/go-pretty/v6/table"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/fatih/color"
+	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 // GlobalConfig 全局配置对象
@@ -175,8 +176,13 @@ func getData() {
 			color.Red("%s", err)
 			return
 		} else if len(api.PicArray) <= 0 {
-			color.Red("相册列表为空")
-			return
+			color.Red("相册列表为空，请切换QQ号后重试")
+			err := newConfig("uin")
+			if err != nil {
+				color.Red("%s", err)
+			}
+			api.InitApi()
+			continue
 		}
 		picFormat() // 打印输出格式化表格
 		// 创建一个 Scanner 对象，用于读取标准输入
@@ -202,7 +208,7 @@ func getData() {
 						continue
 					}
 					currenPicName = api.CurrenPic.Albumname
-				} else if picScanln == "" {
+				} else if picScanln == "" || picScanln == "0" {
 					// 全部下载
 					for i := range api.PicArray {
 						err = api.GetPhotoImages(i + 1)
@@ -218,6 +224,7 @@ func getData() {
 					if err != nil {
 						color.Red("%s", err)
 					}
+					api.InitApi() // 刷新api包的配置，使新UIN生效
 					// 跳出内层循环，重新执行流程
 					break
 				} else {
