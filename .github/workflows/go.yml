@@ -33,6 +33,7 @@ jobs:
 
   # 构建GUI程序（Fyne版本）
   build-gui:
+    needs: build-cli
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -112,6 +113,7 @@ jobs:
 
   # 构建Web程序
   build-web:
+    needs: build-cli
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -166,6 +168,12 @@ jobs:
           name: QzoneDown-Web-${{ runner.os }}-amd64
           path: build/web/${{ env.PACKAGE_NAME }}
 
+      - name: Upload Web to Release
+        run: |
+          gh release upload ${{ github.ref_name }} build/web/${{ env.PACKAGE_NAME }} --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # 创建Release说明
   create-release:
     needs: [build-cli, build-gui, build-web]
@@ -173,18 +181,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Web artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: QzoneDown-Web-*
-          path: .
-          merge-multiple: true
-
       - name: Generate Release Notes
         id: release_notes
         run: |
-          # 列出下载的文件用于调试
-          ls -la build/web/ || true
           echo "## 🚀 QzoneDown-Go Release ${{ github.ref_name }}" > release_notes.md
           echo "" >> release_notes.md
           echo "### 📦 下载地址" >> release_notes.md
@@ -236,9 +235,3 @@ jobs:
           body_path: release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Web Assets
-        run: |
-          gh release upload ${{ github.ref_name }} build/web/QzoneDown-Web-*.tar.gz build/web/QzoneDown-Web-*.zip --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
