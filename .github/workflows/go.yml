@@ -177,13 +177,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: QzoneDown-Web-*
-          path: build/web
+          path: .
           merge-multiple: true
 
       - name: Generate Release Notes
         id: release_notes
         run: |
-          # 从git tag生成release notes
+          # 列出下载的文件用于调试
+          ls -la build/web/ || true
           echo "## 🚀 QzoneDown-Go Release ${{ github.ref_name }}" > release_notes.md
           echo "" >> release_notes.md
           echo "### 📦 下载地址" >> release_notes.md
