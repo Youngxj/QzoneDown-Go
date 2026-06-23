@@ -126,20 +126,29 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Build Web version
+      - name: Build Web version (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         run: |
           mkdir -p build/web
           go build -o build/web/QzoneDown-Web-${{ runner.os }}-amd64 ./cmd/web/
+          echo "BINARY_NAME=QzoneDown-Web-${{ runner.os }}-amd64" >> $GITHUB_ENV
+
+      - name: Build Web version (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force build/web | Out-Null
+          go build -o build/web/QzoneDown-Web-Windows-amd64.exe ./cmd/web/
+          echo "BINARY_NAME=QzoneDown-Web-Windows-amd64.exe" >> $env:GITHUB_ENV
 
       - name: Package Web version (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
           cd build/web
           if [ "${{ runner.os }}" == "Linux" ]; then
-            tar -czf QzoneDown-Web-linux-amd64.tar.gz QzoneDown-Web-Linux-amd64
+            tar -czf QzoneDown-Web-linux-amd64.tar.gz $BINARY_NAME
             echo "PACKAGE_NAME=QzoneDown-Web-linux-amd64.tar.gz" >> $GITHUB_ENV
           elif [ "${{ runner.os }}" == "macOS" ]; then
-            tar -czf QzoneDown-Web-darwin-amd64.tar.gz QzoneDown-Web-macOS-amd64
+            tar -czf QzoneDown-Web-darwin-amd64.tar.gz $BINARY_NAME
             echo "PACKAGE_NAME=QzoneDown-Web-darwin-amd64.tar.gz" >> $GITHUB_ENV
           fi
 
@@ -148,7 +157,7 @@ jobs:
         shell: pwsh
         run: |
           cd build/web
-          7z a -tzip QzoneDown-Web-windows-amd64.zip QzoneDown-Web-Windows-amd64.exe
+          7z a -tzip QzoneDown-Web-windows-amd64.zip $env:BINARY_NAME
           echo "PACKAGE_NAME=QzoneDown-Web-windows-amd64.zip" >> $env:GITHUB_ENV
 
       - name: Upload Web artifacts
@@ -220,12 +229,15 @@ jobs:
           echo "  - macOS: 无特殊要求" >> release_notes.md
           echo "- **Web版本**: 无特殊依赖，需安装Chrome浏览器以支持扫码登录" >> release_notes.md
 
-      - name: Update Release
+      - name: Update Release Body
         uses: softprops/action-gh-release@v2
         with:
           body_path: release_notes.md
-          files: |
-            build/web/QzoneDown-Web-*.tar.gz
-            build/web/QzoneDown-Web-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Web Assets
+        run: |
+          gh release upload ${{ github.ref_name }} build/web/QzoneDown-Web-*.tar.gz build/web/QzoneDown-Web-*.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
