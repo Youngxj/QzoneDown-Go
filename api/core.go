@@ -76,10 +76,38 @@ type PhotoListPicStruct struct {
 	Photos         [][]string
 }
 
+var PicArrayMu sync.RWMutex       // 保护 PicArray 的并发访问
 var PicArray []PhotoListPicStruct // 相册信息列表
-var CurrenPic PhotoListPicStruct  // 当前相册信息
-var photoPn = 20                  // 相册图片列表分页
-var picPn = 40                    // 相册列表分页最小10，最大40
+
+// SetPicArray 线程安全地设置相册列表
+func SetPicArray(arr []PhotoListPicStruct) {
+	PicArrayMu.Lock()
+	defer PicArrayMu.Unlock()
+	PicArray = arr
+}
+
+// GetPicArraySafe 线程安全地获取相册列表副本
+func GetPicArraySafe() []PhotoListPicStruct {
+	PicArrayMu.RLock()
+	defer PicArrayMu.RUnlock()
+	cp := make([]PhotoListPicStruct, len(PicArray))
+	copy(cp, PicArray)
+	return cp
+}
+
+// GetPicByIndex 线程安全地按索引获取相册信息
+func GetPicByIndex(idx int) (PhotoListPicStruct, bool) {
+	PicArrayMu.RLock()
+	defer PicArrayMu.RUnlock()
+	if idx < 0 || idx >= len(PicArray) {
+		return PhotoListPicStruct{}, false
+	}
+	return PicArray[idx], true
+}
+
+var CurrenPic PhotoListPicStruct // 当前相册信息
+var photoPn = 20                 // 相册图片列表分页
+var picPn = 40                   // 相册列表分页最小10，最大40
 
 var bar progress.Bar              // 下载总数进度条初始化
 var photoDownSuccessNum int32 = 0 // 相册图片下载成功数量

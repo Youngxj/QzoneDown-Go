@@ -76,6 +76,12 @@ go run .
 go build -o qzone-down.exe
 ```
 
+编译 Web 版：
+
+```bash
+go build ./cmd/web/
+```
+
 运行：
 
 ```bash

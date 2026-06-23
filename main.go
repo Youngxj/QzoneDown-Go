@@ -171,11 +171,11 @@ func getData() {
 	exitTips := "程序即将退出……👋"
 	for {
 		picList, err := api.GetPicList()
-		api.PicArray = picList
+		api.SetPicArray(picList)
 		if err != nil {
 			color.Red("%s", err)
 			return
-		} else if len(api.PicArray) <= 0 {
+		} else if len(picList) <= 0 {
 			color.Red("相册列表为空，请切换QQ号后重试")
 			err := newConfig("uin")
 			if err != nil {
@@ -210,7 +210,8 @@ func getData() {
 					currenPicName = api.CurrenPic.Albumname
 				} else if picScanln == "" || picScanln == "0" {
 					// 全部下载
-					for i := range api.PicArray {
+					picArray := api.GetPicArraySafe()
+					for i := range picArray {
 						err = api.GetPhotoImages(i + 1)
 						if err != nil {
 							color.Red("%s", err)
@@ -252,7 +253,7 @@ func picFormat() {
 	header := table.Row{"相册名称", "相册数量", "最后更新", "访问权限", "相册描述"}
 	t.MakeHeader(header)
 	var rows []table.Row
-	for _, pic := range api.PicArray {
+	for _, pic := range api.GetPicArraySafe() {
 		_time := time.Unix(int64(pic.Lastupdatetime), 0).Format("2006-01-02")
 		_albumrights, _ := enum.ConvertRightsEnum(pic.Albumrights)
 		rows = append(rows, table.Row{pic.Albumname, pic.Albumnum, _time, _albumrights, pic.Desc})

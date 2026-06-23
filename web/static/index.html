@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QQ空间相册下载器</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        background: #f0f2f5;
+        color: #333;
+        min-height: 100vh;
+        padding-bottom: 80px;
+      }
+      header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        padding: 20px 16px;
+        text-align: center;
+        position: relative;
+      }
+      header h1 {
+        font-size: 26px;
+        margin-bottom: 4px;
+      }
+      header p {
+        font-size: 15px;
+        opacity: 0.85;
+      }
+      .github-link {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: rgba(255, 255, 255, 0.75);
+        text-decoration: none;
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        transition: all 0.2s;
+      }
+      .github-link:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      /* ---- Layout: CSS Grid ---- */
+      .layout {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        gap: 16px;
+        max-width: 1300px;
+        margin: 16px auto;
+        padding: 0 16px;
+        align-items: start;
+      }
+      .layout-left {
+        min-width: 0;
+      }
+      .layout-right {
+        min-width: 0;
+      }
+
+      .card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      .card-title {
+        font-size: 17px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .form-group {
+        margin-bottom: 12px;
+      }
+      .form-group label {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 4px;
+        color: #555;
+      }
+      .form-group input,
+      .form-group textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1.5px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.2s;
+        outline: none;
+        font-family: inherit;
+      }
+      .form-group input:focus,
+      .form-group textarea:focus {
+        border-color: #667eea;
+      }
+      .form-group textarea {
+        min-height: 60px;
+        resize: vertical;
+        font-size: 13px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .btn-primary {
+        background: #667eea;
+        color: #fff;
+      }
+      .btn-success {
+        background: #48bb78;
+        color: #fff;
+      }
+      .btn-warning {
+        background: #ed8936;
+        color: #fff;
+      }
+      .btn-danger {
+        background: #f56565;
+        color: #fff;
+      }
+      .btn-outline {
+        background: transparent;
+        border: 1.5px solid #667eea;
+        color: #667eea;
+      }
+      .btn-xs {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      .btn-sm {
+        padding: 8px 16px;
+        font-size: 13px;
+      }
+      .btn-group {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .badge-blue {
+        background: #ebf4ff;
+        color: #3182ce;
+      }
+      .badge-green {
+        background: #f0fff4;
+        color: #48bb78;
+      }
+      .badge-orange {
+        background: #fffaf0;
+        color: #ed8936;
+      }
+      .badge-red {
+        background: #fff5f5;
+        color: #e53e3e;
+      }
+      .text-muted {
+        color: #999;
+        font-weight: 400;
+      }
+
+      /* ---- Album Table ---- */
+      .album-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .album-table {
+        width: 100%;
+        min-width: 600px;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .album-table thead {
+        background: #f7f8fc;
+      }
+      .album-table th {
+        text-align: left;
+        padding: 10px 12px;
+        font-weight: 600;
+        font-size: 13px;
+        color: #555;
+        border-bottom: 2px solid #edf2f7;
+        white-space: nowrap;
+      }
+      .album-table th.check {
+        width: 40px;
+        text-align: center;
+      }
+      .album-table th.num,
+      .album-table th.rights {
+        width: 80px;
+      }
+      .album-table th.desc {
+        min-width: 120px;
+      }
+      .album-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #f0f2f5;
+        vertical-align: middle;
+      }
+      .album-table td.check {
+        text-align: center;
+      }
+      .album-table tr:hover {
+        background: #fafbff;
+      }
+      .album-table td strong {
+        color: #333;
+        font-size: 14px;
+      }
+      .album-table input[type='checkbox'] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: #667eea;
+      }
+      .album-table td.num,
+      .album-table td.rights {
+        text-align: center;
+      }
+
+      /* ---- Album Grid ---- */
+      .album-grid {
+        /* display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px; */
+      }
+      .album-card {
+        background: #fff;
+        border: 1.5px solid #edf2f7;
+        border-radius: 8px;
+        padding: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .album-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 2px 12px rgba(102, 126, 234, 0.12);
+      }
+      .album-card.selected {
+        border-color: #667eea;
+        background: #f5f7ff;
+      }
+      .album-card .ac-check {
+        flex-shrink: 0;
+        padding-top: 2px;
+      }
+      .album-card input[type='checkbox'] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: #667eea;
+      }
+      .album-card .ac-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .album-card .ac-name {
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .album-card .ac-meta {
+        font-size: 12px;
+        color: #888;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .album-card .ac-desc {
+        font-size: 11px;
+        color: #aaa;
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ---- Floating bottom progress ---- */
+      #progressFloat {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
+        z-index: 1000;
+        display: none;
+        max-height: 50vh;
+        overflow-y: auto;
+      }
+      .progress-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #edf2f7;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
+      }
+      .progress-header .title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .progress-list {
+        padding: 4px 16px 16px;
+      }
+      .progress-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        font-size: 14px;
+      }
+      .progress-item .name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .progress-bar-wrap {
+        flex: 0 0 140px;
+        height: 6px;
+        background: #edf2f7;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .progress-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+      }
+      .progress-item .pstatus {
+        font-size: 13px;
+        white-space: nowrap;
+        min-width: 50px;
+        text-align: right;
+      }
+      .text-success {
+        color: #48bb78;
+      }
+      .text-error {
+        color: #e53e3e;
+      }
+
+      /* ---- Loading ---- */
+      .loading {
+        text-align: center;
+        padding: 30px 0;
+        color: #999;
+      }
+      .spinner {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 2px solid #e0e0e0;
+        border-top-color: #667eea;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ---- Tabs ---- */
+      .tabs {
+        display: flex;
+        border-bottom: 2px solid #edf2f7;
+        margin-bottom: 10px;
+      }
+      .tab {
+        padding: 10px 18px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: #888;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.2s;
+      }
+      .tab:hover {
+        color: #667eea;
+      }
+      .tab.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+
+      /* ---- QR Code ---- */
+      .qrcode-wrap {
+        text-align: center;
+        padding: 10px 0;
+      }
+      .qrcode-img {
+        max-width: 200px;
+        border-radius: 8px;
+        border: 2px solid #edf2f7;
+      }
+      .qrcode-tip {
+        font-size: 12px;
+        color: #888;
+        margin-top: 8px;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 30px 0;
+        color: #aaa;
+        font-size: 14px;
+      }
+
+      /* ---- Responsive ---- */
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .album-grid {
+          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        }
+        body {
+          padding-bottom: 100px;
+        }
+        .card {
+          padding: 16px;
+        }
+        .form-group textarea {
+          min-height: 50px;
+        }
+        .btn-group .btn {
+          flex: 1;
+        }
+      }
+      @media (max-width: 480px) {
+        header h1 {
+          font-size: 20px;
+        }
+        header p {
+          font-size: 13px;
+        }
+        .layout {
+          padding: 0 8px;
+          gap: 8px;
+          margin: 8px auto;
+        }
+        .album-grid {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        .card {
+          padding: 12px;
+          margin-bottom: 8px;
+        }
+        .card-title {
+          font-size: 15px;
+        }
+        .form-group label {
+          font-size: 13px;
+        }
+        .form-group input {
+          font-size: 13px;
+          padding: 8px 10px;
+        }
+        .form-group textarea {
+          font-size: 12px;
+          min-height: 40px;
+        }
+        .btn {
+          padding: 10px 12px;
+          font-size: 13px;
+        }
+        .btn-group {
+          gap: 6px;
+        }
+        .btn-group .btn {
+          flex: 1;
+          justify-content: center;
+        }
+        .badge {
+          font-size: 10px;
+          padding: 2px 6px;
+        }
+        .album-card {
+          padding: 12px;
+        }
+        .album-card .ac-name {
+          font-size: 13px;
+        }
+        .progress-bar-wrap {
+          flex: 1 1 auto;
+          max-width: 120px;
+        }
+        .progress-item {
+          font-size: 12px;
+          padding: 6px 0;
+        }
+        .progress-header .title {
+          font-size: 13px;
+        }
+        .progress-header {
+          padding: 8px 10px;
+        }
+        .progress-list {
+          padding: 4px 10px 10px;
+        }
+        .tab {
+          padding: 8px 12px;
+          font-size: 13px;
+        }
+        .qrcode-img {
+          max-width: 160px;
+        }
+        .github-link span {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a
+        href="https://github.com/Youngxj/QzoneDown-Go"
+        target="_blank"
+        class="github-link"
+        title="GitHub"
+      >
+        <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+        <span>GitHub</span>
+      </a>
+      <h1>QQ空间相册下载器</h1>
+      <p>Web版 — 下载自己或指定QQ空间相册中的图片</p>
+    </header>
+
+    <div class="layout">
+      <!-- 左侧：配置 -->
+      <div class="layout-left">
+        <div class="card">
+          <div class="card-title">⚙️ 配置</div>
+          <div class="tabs">
+            <div
+              class="tab active"
+              data-tab="manual"
+              onclick="switchTab('manual')"
+            >
+              手动
+            </div>
+            <div class="tab" data-tab="auto" onclick="switchTab('auto')">
+              扫码
+            </div>
+          </div>
+
+          <div id="tab-manual" class="tab-content active">
+            <div class="form-group">
+              <label>Cookie</label>
+              <textarea id="cookieInput" placeholder="粘贴Cookie..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>QQ号 <span class="text-muted">(留空自动识别)</span></label>
+              <input id="uinInput" placeholder="要访问的QQ号" />
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-primary btn-sm" onclick="saveConfig()">
+                💾 保存
+              </button>
+              <button class="btn btn-success btn-sm" onclick="loadAlbums()">
+                📋 加载相册
+              </button>
+            </div>
+            <div
+              id="configStatus"
+              style="margin-top: 6px; font-size: 12px; color: #48bb78"
+            ></div>
+          </div>
+
+          <div id="tab-auto" class="tab-content">
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px">
+              自动打开Chrome扫码登录，获取Cookie。
+            </p>
+            <button
+              class="btn btn-warning btn-sm"
+              id="loginBtn"
+              onclick="startLogin()"
+            >
+              🔑 扫码登录
+            </button>
+            <div
+              id="qrCodeWrap"
+              class="qrcode-wrap"
+              style="display: none"
+            ></div>
+            <div
+              id="loginStatus"
+              style="margin-top: 6px; font-size: 12px; color: #666"
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：相册列表 -->
+      <div class="layout-right">
+        <div class="card" id="albumCard" style="display: none">
+          <div
+            class="card-title"
+            style="justify-content: space-between; flex-wrap: wrap"
+          >
+            <span
+              >📂 相册列表
+              <span
+                id="albumUin"
+                style="font-size: 12px; font-weight: 400; color: #888"
+              ></span
+            ></span>
+            <span style="font-size: 11px; font-weight: 400; color: #888"
+              ><span id="selectedCount">0</span> 已选</span
+            >
+          </div>
+          <div class="btn-group" style="margin-bottom: 8px">
+            <button class="btn btn-primary btn-xs" onclick="selectAll()">
+              全选
+            </button>
+            <button class="btn btn-outline btn-xs" onclick="deselectAll()">
+              取消
+            </button>
+            <button class="btn btn-success btn-xs" onclick="downloadSelected()">
+              ⬇️ 下载选中
+            </button>
+            <button class="btn btn-success btn-xs" onclick="downloadAll()">
+              ⬇️ 全部
+            </button>
+          </div>
+          <div id="albumLoading" class="loading">
+            <span class="spinner"></span>加载中...
+          </div>
+          <div class="album-grid" id="albumContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部浮动进度 -->
+    <div id="progressFloat">
+      <div class="progress-header">
+        <span class="title">📥 下载进度</span>
+        <button class="btn btn-danger btn-xs" onclick="stopDownload()">
+          ⏹ 停止
+        </button>
+      </div>
+      <div class="progress-list" id="progressList"></div>
+    </div>
+
+    <script>
+      // === State ===
+      let albums = []
+      let isDownloading = false
+      let progressSource = null
+      let downloadCompleted = false
+
+      // === Tab ===
+      function switchTab(name) {
+        document
+          .querySelectorAll('.tab')
+          .forEach((t) => t.classList.remove('active'))
+        document
+          .querySelectorAll('.tab-content')
+          .forEach((t) => t.classList.remove('active'))
+        document
+          .querySelector(`.tab[data-tab="${name}"]`)
+          .classList.add('active')
+        document.getElementById(`tab-${name}`).classList.add('active')
+      }
+
+      // === Config ===
+      function loadConfigToUI() {
+        fetch('/api/config')
+          .then((r) => r.json())
+          .then((d) => {
+            document.getElementById('cookieInput').value = d.cookie || ''
+            document.getElementById('uinInput').value = d.uin || ''
+            if (d.cookie) {
+              document.getElementById('configStatus').textContent =
+                '✅ 已有配置，可直接加载相册'
+            }
+          })
+          .catch(() => {})
+      }
+
+      function saveConfig() {
+        const cookie = document.getElementById('cookieInput').value.trim()
+        const uin = document.getElementById('uinInput').value.trim()
+        fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cookie, uin }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            document.getElementById('configStatus').textContent = d.error
+              ? '❌ ' + d.error
+              : '✅ 配置保存成功' + (d.cookie ? '，已计算GTK' : '')
+          })
+          .catch((e) => {
+            document.getElementById('configStatus').textContent =
+              '❌ 失败：' + e.message
+          })
+      }
+
+      // === Login ===
+      function startLogin() {
+        const btn = document.getElementById('loginBtn')
+        btn.disabled = true
+        btn.textContent = '⏳ 登录中...'
+        document.getElementById('loginStatus').textContent = '正在打开浏览器...'
+        document.getElementById('qrCodeWrap').style.display = 'none'
+        document.getElementById('qrCodeWrap').innerHTML = ''
+
+        fetch('/api/login/start', { method: 'POST' })
+          .then((r) => r.json())
+          .then(() => {
+            document.getElementById('loginStatus').innerHTML =
+              '<span class="spinner"></span> 等待二维码...'
+            // Poll QR code image
+            const qrPoll = setInterval(() => {
+              fetch('/api/login/qrcode')
+                .then((r) => r.json())
+                .then((d) => {
+                  if (d.ready && d.dataUrl) {
+                    clearInterval(qrPoll)
+                    const wrap = document.getElementById('qrCodeWrap')
+                    wrap.innerHTML =
+                      '<img class="qrcode-img" src="' +
+                      d.dataUrl +
+                      '" alt="QR Code">' +
+                      '<p class="qrcode-tip">📱 请使用手机QQ扫描二维码登录</p>'
+                    wrap.style.display = 'block'
+                    document.getElementById('loginStatus').textContent = ''
+                  } else if (d.error) {
+                    clearInterval(qrPoll)
+                    document.getElementById('loginStatus').textContent =
+                      '❌ ' + d.error
+                    btn.disabled = false
+                    btn.textContent = '🔑 扫码登录'
+                  }
+                })
+                .catch(() => {})
+            }, 1000)
+
+            // Poll login status
+            const loginPoll = setInterval(() => {
+              fetch('/api/login/check')
+                .then((r) => r.json())
+                .then((d) => {
+                  if (d.completed) {
+                    clearInterval(loginPoll)
+                    btn.disabled = false
+                    btn.textContent = '🔑 扫码登录'
+                    document.getElementById('qrCodeWrap').style.display = 'none'
+                    document.getElementById('qrCodeWrap').innerHTML = ''
+                    document.getElementById('loginStatus').textContent =
+                      '✅ 登录成功！'
+                    loadConfigToUI()
+                    loadAlbums()
+                  } else if (d.error) {
+                    clearInterval(loginPoll)
+                    btn.disabled = false
+                    btn.textContent = '🔑 扫码登录'
+                    document.getElementById('qrCodeWrap').style.display = 'none'
+                    document.getElementById('qrCodeWrap').innerHTML = ''
+                    document.getElementById('loginStatus').textContent =
+                      '❌ ' + d.error
+                  }
+                })
+            }, 2000)
+          })
+          .catch((e) => {
+            btn.disabled = false
+            btn.textContent = '🔑 扫码登录'
+            document.getElementById('loginStatus').textContent =
+              '❌ ' + e.message
+          })
+      }
+
+      // === Albums ===
+      function loadAlbums() {
+        const card = document.getElementById('albumCard')
+        const loading = document.getElementById('albumLoading')
+        const content = document.getElementById('albumContent')
+        card.style.display = 'block'
+        loading.style.display = 'block'
+        content.innerHTML = ''
+
+        fetch('/api/albums')
+          .then((r) => r.json())
+          .then((d) => {
+            loading.style.display = 'none'
+            if (d.error) {
+              content.innerHTML =
+                '<div class="empty-state">❌ ' + escapeHtml(d.error) + '</div>'
+              return
+            }
+            albums = d.albums || []
+            document.getElementById('albumUin').textContent =
+              '(QQ: ' + (d.uin || '?') + ')'
+            if (albums.length === 0) {
+              content.innerHTML =
+                '<div class="empty-state">📭 相册列表为空，请检查Cookie或QQ号</div>'
+              return
+            }
+            renderAlbums(albums)
+          })
+          .catch((e) => {
+            loading.style.display = 'none'
+            content.innerHTML =
+              '<div class="empty-state">❌ 加载失败：' +
+              escapeHtml(e.message) +
+              '</div>'
+          })
+      }
+
+      function renderAlbums(list) {
+        let html =
+          '<div class="album-table-wrap"><table class="album-table"><thead><tr>' +
+          '<th class="check"><input type="checkbox" onchange="toggleAllCheckboxes(this.checked)" id="checkAll"></th>' +
+          '<th>相册名称</th><th class="num">数量</th><th class="rights">权限</th><th class="desc">描述</th><th>更新</th>' +
+          '</tr></thead><tbody>'
+
+        list.forEach((a, i) => {
+          html +=
+            '<tr>' +
+            '<td class="check"><input type="checkbox" class="album-check" data-idx="' +
+            i +
+            '" onchange="updateSelectedCount()"></td>' +
+            '<td><strong>' +
+            escapeHtml(a.albumname) +
+            '</strong></td>' +
+            '<td class="num"><span class="badge badge-blue">' +
+            a.albumnum +
+            '</span></td>' +
+            '<td class="rights"><span class="badge badge-orange">' +
+            escapeHtml(a.albumrights) +
+            '</span></td>' +
+            '<td class="desc" style="color:#888;font-size:11px">' +
+            escapeHtml(a.desc || '-') +
+            '</td>' +
+            '<td style="white-space:nowrap;font-size:11px;color:#888">' +
+            a.lastupdatetime +
+            '</td>' +
+            '</tr>'
+        })
+        html += '</tbody></table></div>'
+        document.getElementById('albumContent').innerHTML = html
+        updateSelectedCount()
+      }
+
+      function updateSelectedCount() {
+        document.getElementById('selectedCount').textContent =
+          document.querySelectorAll('.album-check:checked').length
+      }
+      function toggleAllCheckboxes(v) {
+        document
+          .querySelectorAll('.album-check')
+          .forEach((c) => (c.checked = v))
+        updateSelectedCount()
+      }
+      function selectAll() {
+        document
+          .querySelectorAll('.album-check')
+          .forEach((c) => (c.checked = true))
+        document.getElementById('checkAll').checked = true
+        updateSelectedCount()
+      }
+      function deselectAll() {
+        document
+          .querySelectorAll('.album-check')
+          .forEach((c) => (c.checked = false))
+        document.getElementById('checkAll').checked = false
+        updateSelectedCount()
+      }
+
+      // === Download ===
+      function downloadSelected() {
+        const checked = document.querySelectorAll('.album-check:checked')
+        if (checked.length === 0) {
+          alert('请先选择相册')
+          return
+        }
+        startDownload(
+          Array.from(checked).map((c) => parseInt(c.dataset.idx) + 1),
+        )
+      }
+      function downloadAll() {
+        startDownload('all')
+      }
+
+      function startDownload(ids) {
+        if (isDownloading) {
+          alert('下载进行中，请等待完成')
+          return
+        }
+        isDownloading = true
+        downloadCompleted = false
+        document.getElementById('progressFloat').style.display = 'block'
+        document.getElementById('progressList').innerHTML = ''
+
+        fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ albumIds: ids }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.error) {
+              isDownloading = false
+              alert(d.error)
+              return
+            }
+            startProgressStream()
+          })
+          .catch((e) => {
+            isDownloading = false
+            alert('启动失败：' + e.message)
+          })
+      }
+
+      function startProgressStream() {
+        if (progressSource) progressSource.close()
+        progressSource = new EventSource('/api/download/progress')
+
+        progressSource.onmessage = function (e) {
+          try {
+            const data = JSON.parse(e.data)
+            if (data.type === 'list') {
+              renderProgressList(data.data)
+            } else if (data.type === 'update') {
+              updateProgressItem(data.data)
+              if (data.data.status === 'all_completed') {
+                finishDownload()
+              } else if (data.data.status === 'error' && !data.data.albumName) {
+                finishDownload()
+              }
+            }
+          } catch (x) {}
+        }
+
+        progressSource.onerror = function () {
+          finishDownload()
+        }
+      }
+
+      function finishDownload() {
+        if (progressSource) {
+          progressSource.close()
+          progressSource = null
+        }
+        isDownloading = false
+        downloadCompleted = true
+        // 5秒后自动收起进度条
+        setTimeout(() => {
+          if (!isDownloading && downloadCompleted) {
+            document.getElementById('progressFloat').style.display = 'none'
+          }
+        }, 5000)
+      }
+
+      function renderProgressList(list) {
+        const el = document.getElementById('progressList')
+        el.innerHTML = list.map((p) => createProgressHTML(p)).join('')
+      }
+
+      function updateProgressItem(p) {
+        if (!p.albumName) return
+        const el = document.getElementById('progressList')
+        const id = 'progress-' + sanitizeId(p.albumName)
+        let existing = document.getElementById(id)
+
+        if (existing) {
+          const fill = existing.querySelector('.pbar-fill')
+          const st = existing.querySelector('.pstatus')
+          if (p.total > 0) {
+            fill.style.width = (p.current / p.total) * 100 + '%'
+          }
+          if (p.status === 'downloading') {
+            st.textContent = (p.current || 0) + '/' + (p.total || 0)
+          } else if (p.status === 'completed') {
+            fill.style.width = '100%'
+            fill.style.background = '#48bb78'
+            st.textContent = '✅ 完成'
+          } else if (p.status === 'error') {
+            fill.style.background = '#f56565'
+            st.textContent = '❌ 失败'
+          }
+        } else {
+          el.insertAdjacentHTML('beforeend', createProgressHTML(p))
+        }
+      }
+
+      function createProgressHTML(p) {
+        if (!p.albumName) return ''
+        const pct =
+          p.total > 0 ? ((p.current || 0) / p.total) * 100 + '%' : '0%'
+        return (
+          '<div class="progress-item" id="progress-' +
+          sanitizeId(p.albumName) +
+          '">' +
+          '<span class="name">' +
+          escapeHtml(p.albumName) +
+          '</span>' +
+          '<div class="progress-bar-wrap"><div class="progress-bar-fill pbar-fill" style="width:' +
+          pct +
+          ';background:' +
+          (p.status === 'error' ? '#f56565' : '') +
+          '"></div></div>' +
+          '<span class="pstatus">' +
+          (p.current || 0) +
+          '/' +
+          (p.total || 0) +
+          '</span>' +
+          '</div>'
+        )
+      }
+
+      function stopDownload() {
+        if (progressSource) {
+          progressSource.close()
+          progressSource = null
+        }
+        isDownloading = false
+        downloadCompleted = true
+        document.getElementById('progressFloat').style.display = 'none'
+        // 通知后端停止
+        fetch('/api/download', { method: 'DELETE' }).catch(() => {})
+      }
+
+      // === Utils ===
+      function escapeHtml(s) {
+        if (!s) return ''
+        var d = document.createElement('div')
+        d.textContent = s
+        return d.innerHTML
+      }
+      function sanitizeId(s) {
+        if (!s) return ''
+        return s.replace(/[^a-zA-Z0-9_-]/g, '_')
+      }
+
+      // === Init ===
+      loadConfigToUI()
+    </script>
+  </body>
+</html>
