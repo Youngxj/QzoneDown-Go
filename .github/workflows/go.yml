@@ -9,7 +9,6 @@ on:
       - v*
 
 jobs:
-
   # 构建主程序（CLI版本）
   build-cli:
     runs-on: ubuntu-latest
@@ -21,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod" # 使用 go.mod 文件中的 golang 版本
+          go-version-file: 'go.mod' # 使用 go.mod 文件中的 golang 版本
 
       - name: Build CLI version
         uses: goreleaser/goreleaser-action@v6
@@ -37,7 +36,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +45,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
+          go-version-file: 'go.mod'
 
       # 安装GUI依赖
       - name: Install GUI dependencies (Linux)
@@ -111,9 +110,65 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
+  # 构建Web程序
+  build-web:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build Web version
+        run: |
+          mkdir -p build/web
+          go build -o build/web/QzoneDown-Web-${{ runner.os }}-amd64 ./cmd/web/
+
+      - name: Package Web version (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd build/web
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            tar -czf QzoneDown-Web-linux-amd64.tar.gz QzoneDown-Web-Linux-amd64
+            echo "PACKAGE_NAME=QzoneDown-Web-linux-amd64.tar.gz" >> $GITHUB_ENV
+          elif [ "${{ runner.os }}" == "macOS" ]; then
+            tar -czf QzoneDown-Web-darwin-amd64.tar.gz QzoneDown-Web-macOS-amd64
+            echo "PACKAGE_NAME=QzoneDown-Web-darwin-amd64.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Package Web version (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd build/web
+          Rename-Item QzoneDown-Web-Windows-amd64 QzoneDown-Web-Windows-amd64.exe
+          7z a -tzip QzoneDown-Web-windows-amd64.zip QzoneDown-Web-Windows-amd64.exe
+          echo "PACKAGE_NAME=QzoneDown-Web-windows-amd64.zip" >> $env:GITHUB_ENV
+
+      - name: Upload Web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: QzoneDown-Web-${{ runner.os }}-amd64
+          path: build/web/${{ env.PACKAGE_NAME }}
+
+      - name: Upload Web to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/web/${{ env.PACKAGE_NAME }}
+          asset_name: ${{ env.PACKAGE_NAME }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
   # 创建Release说明
   create-release:
-    needs: [ build-cli, build-gui ]
+    needs: [build-cli, build-gui, build-web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,6 +191,11 @@ jobs:
           echo "- [Windows GUI版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-GUI-windows-amd64.zip)" >> release_notes.md
           echo "- [macOS GUI版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-GUI-darwin-amd64.tar.gz)" >> release_notes.md
           echo "" >> release_notes.md
+          echo "#### Web版本（网页界面）" >> release_notes.md
+          echo "- [Linux Web版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-Web-linux-amd64.tar.gz)" >> release_notes.md
+          echo "- [Windows Web版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-Web-windows-amd64.zip)" >> release_notes.md
+          echo "- [macOS Web版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref }}/QzoneDown-Web-darwin-amd64.tar.gz)" >> release_notes.md
+          echo "" >> release_notes.md
           echo "### 📋 使用说明" >> release_notes.md
           echo "" >> release_notes.md
           echo "#### CLI版本" >> release_notes.md
@@ -149,12 +209,18 @@ jobs:
           echo "2. 解压文件" >> release_notes.md
           echo "3. 运行可执行文件" >> release_notes.md
           echo "" >> release_notes.md
+          echo "#### Web版本" >> release_notes.md
+          echo "1. 下载对应系统的Web版本并解压" >> release_notes.md
+          echo "2. 运行可执行文件，自动打开浏览器访问 Web UI" >> release_notes.md
+          echo "3. 支持扫码登录和相册管理下载" >> release_notes.md
+          echo "" >> release_notes.md
           echo "### 🔧 系统要求" >> release_notes.md
           echo "- **CLI版本**: Go 1.19+ 环境" >> release_notes.md
           echo "- **GUI版本**: " >> release_notes.md
           echo "  - Linux: 需要libgl1-mesa-dev等GUI库" >> release_notes.md
           echo "  - Windows: 无特殊要求" >> release_notes.md
           echo "  - macOS: 无特殊要求" >> release_notes.md
+          echo "- **Web版本**: 无特殊依赖，需安装Chrome浏览器以支持扫码登录" >> release_notes.md
 
       - name: Update Release
         uses: softprops/action-gh-release@v2
@@ -164,5 +230,8 @@ jobs:
             build/gui/QzoneDown-GUI-linux-amd64.tar.gz
             build/gui/QzoneDown-GUI-windows-amd64.zip
             build/gui/QzoneDown-GUI-darwin-amd64.tar.gz
+            build/web/QzoneDown-Web-linux-amd64.tar.gz
+            build/web/QzoneDown-Web-windows-amd64.zip
+            build/web/QzoneDown-Web-darwin-amd64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
