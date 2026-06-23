@@ -145,9 +145,9 @@ jobs:
 
       - name: Package Web version (Windows)
         if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
           cd build/web
-          Rename-Item QzoneDown-Web-Windows-amd64 QzoneDown-Web-Windows-amd64.exe
           7z a -tzip QzoneDown-Web-windows-amd64.zip QzoneDown-Web-Windows-amd64.exe
           echo "PACKAGE_NAME=QzoneDown-Web-windows-amd64.zip" >> $env:GITHUB_ENV
 
@@ -157,21 +157,19 @@ jobs:
           name: QzoneDown-Web-${{ runner.os }}-amd64
           path: build/web/${{ env.PACKAGE_NAME }}
 
-      - name: Upload Web to Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/web/${{ env.PACKAGE_NAME }}
-          asset_name: ${{ env.PACKAGE_NAME }}
-          tag: ${{ github.ref }}
-          overwrite: true
-
   # 创建Release说明
   create-release:
     needs: [build-cli, build-gui, build-web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download Web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: QzoneDown-Web-*
+          path: build/web
+          merge-multiple: true
 
       - name: Generate Release Notes
         id: release_notes
@@ -227,11 +225,7 @@ jobs:
         with:
           body_path: release_notes.md
           files: |
-            build/gui/QzoneDown-GUI-linux-amd64.tar.gz
-            build/gui/QzoneDown-GUI-windows-amd64.zip
-            build/gui/QzoneDown-GUI-darwin-amd64.tar.gz
-            build/web/QzoneDown-Web-linux-amd64.tar.gz
-            build/web/QzoneDown-Web-windows-amd64.zip
-            build/web/QzoneDown-Web-darwin-amd64.tar.gz
+            build/web/QzoneDown-Web-*.tar.gz
+            build/web/QzoneDown-Web-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
